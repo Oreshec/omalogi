@@ -115,6 +115,32 @@ test("daemonProblem surfaces daemon errors", () => {
   assert.equal(Model.daemonProblem(null), "")
 })
 
+test("indicator shows the active profile and why", () => {
+  const byRule = { connected: true, active_profile: 2, source: "rule 1", app: "cs2", error: null }
+  assert.equal(Model.indicatorText(byRule), "󰍽 2")
+  assert.equal(Model.indicatorActive(byRule), true)
+  assert.equal(Model.indicatorTooltip(byRule), "Omalogi: profile 2 (rule 1 for cs2)")
+
+  const byDefault = { ...byRule, source: "default" }
+  assert.equal(Model.indicatorActive(byDefault), false)
+  assert.equal(Model.indicatorTooltip(byDefault), "Omalogi: profile 2 (default)")
+
+  const manual = { ...byRule, source: null }
+  assert.equal(Model.indicatorTooltip(manual), "Omalogi: profile 2")
+})
+
+test("indicator explains missing daemon, device and errors", () => {
+  assert.equal(Model.indicatorText(null), "󰍽")
+  assert.equal(Model.indicatorTooltip(null), "Omalogi: daemon not running")
+  const unplugged = { connected: false, active_profile: null, source: null, error: null }
+  assert.equal(Model.indicatorText(unplugged), "󰍽")
+  assert.equal(Model.indicatorTooltip(unplugged), "Omalogi: no mouse connected")
+  assert.equal(
+    Model.indicatorTooltip({ ...unplugged, error: "no supported Logitech device found" }),
+    "Omalogi: no supported Logitech device found"
+  )
+})
+
 test("boundSlots keeps slot numbers of bound buttons", () => {
   const slots = JSON.parse(JSON.stringify(Model.boundSlots(["left click", null, "DPI up"])))
   assert.deepEqual(slots, [

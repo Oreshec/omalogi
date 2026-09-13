@@ -6,7 +6,17 @@
   "author": "elberacasa",
   "license": "MIT OR Apache-2.0",
   "description": "Onboard profiles for Logitech G-series mice.",
-  "kinds": ["overlay"],
+  "kinds": ["overlay", "bar-widget"],
   "keepLoaded": true,
-  "entryPoints": { "overlay": "plugin/Omalogi.qml" }
+  "entryPoints": {
+    "overlay": "plugin/Omalogi.qml",
+    "barWidget": "plugin/Indicator.qml"
+  },
+  "barWidget": {
+    "displayName": "Omalogi",
+    "description": "Active onboard profile of your Logitech mouse",
+    "category": "Devices",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
 }

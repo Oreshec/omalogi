@@ -94,6 +94,29 @@ function daemonProblem(daemon) {
   return daemon && daemon.error ? "Auto-switching: " + daemon.error : ""
 }
 
+var MOUSE_GLYPH = "󰍽"
+
+// Bar indicator text: the mouse glyph, plus the active profile when the daemon knows it.
+function indicatorText(daemon) {
+  if (!daemon || !daemon.connected || !daemon.active_profile) return MOUSE_GLYPH
+  return MOUSE_GLYPH + " " + daemon.active_profile
+}
+
+// Highlighted while a rule, not the default, chose the profile.
+function indicatorActive(daemon) {
+  return !!(daemon && daemon.connected && daemon.source && daemon.source !== "default")
+}
+
+function indicatorTooltip(daemon) {
+  if (!daemon) return "Omalogi: daemon not running"
+  if (daemon.error) return "Omalogi: " + daemon.error
+  if (!daemon.connected || !daemon.active_profile) return "Omalogi: no mouse connected"
+  var text = "Omalogi: profile " + daemon.active_profile
+  if (daemon.source === "default") return text + " (default)"
+  if (daemon.source) return text + " (" + daemon.source + (daemon.app ? " for " + daemon.app : "") + ")"
+  return text
+}
+
 // Bound slots as {slot, label}. omalogi sends null for unbound slots.
 function boundSlots(labels) {
   var slots = []
