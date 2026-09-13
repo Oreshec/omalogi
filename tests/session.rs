@@ -72,6 +72,11 @@ async fn reads_onboard_profiles() {
             profile: 0
         }
     );
+
+    let labels = &state.profiles[1].labels;
+    assert_eq!(labels.buttons[4].as_deref(), Some("G-Shift (hold)"));
+    assert_eq!(labels.buttons[13], None);
+    assert_eq!(labels.gshift_buttons[2].as_deref(), Some("Ctrl+T"));
 }
 
 #[tokio::test]

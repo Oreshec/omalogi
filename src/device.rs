@@ -23,7 +23,8 @@ use crate::{
     hidraw::{self, HidrawChannel, HidrawError, SupportedDevice},
     onboard::{
         Mode, OnboardError, OnboardProfilesFeature,
-        format::{self, Description, DirectoryEntry, Profile},
+        format::{self, Binding, Description, DirectoryEntry, Profile},
+        label,
     },
 };
 
@@ -107,6 +108,14 @@ pub struct ProfileSlot {
     pub active: bool,
     pub crc_valid: bool,
     pub profile: Profile,
+    pub labels: BindingLabels,
+}
+
+/// Readable names for a profile's bindings, aligned with its slots; `None` for unbound slots.
+#[derive(Debug, Clone, Serialize)]
+pub struct BindingLabels {
+    pub buttons: Vec<Option<String>>,
+    pub gshift_buttons: Vec<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -252,13 +261,18 @@ impl Session {
             let sector = feature
                 .read_sector(entry.sector, description.sector_size)
                 .await?;
+            let profile = Profile::parse(&sector, &description).map_err(OnboardError::from)?;
             profiles.push(ProfileSlot {
                 position,
                 sector: entry.sector,
                 enabled: entry.enabled,
                 active: active_position == Some(position),
                 crc_valid: format::sector_crc_valid(&sector),
-                profile: Profile::parse(&sector, &description).map_err(OnboardError::from)?,
+                labels: BindingLabels {
+                    buttons: labels_for(&profile.buttons),
+                    gshift_buttons: labels_for(&profile.gshift_buttons),
+                },
+                profile,
             });
         }
 
@@ -363,6 +377,13 @@ impl Session {
         self.feature::<OnboardProfilesFeature>("onboard profiles (0x8100)")
             .await
     }
+}
+
+fn labels_for(bindings: &[Binding]) -> Vec<Option<String>> {
+    bindings
+        .iter()
+        .map(|binding| (*binding != Binding::Disabled).then(|| label::binding(binding)))
+        .collect()
 }
 
 /// Reads the user profile directory, refusing one whose checksum does not match.

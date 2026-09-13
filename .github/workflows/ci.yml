@@ -32,3 +32,14 @@ jobs:
 
       - name: Test
         run: cargo test --locked
+
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manifest is valid JSON
+        run: jq -e '.schemaVersion == 1 and .entryPoints.overlay' manifest.json
+
+      - name: Model tests
+        run: node --test plugin/tests

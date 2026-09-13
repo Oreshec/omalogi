@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.elberacasa.omalogi",
+  "name": "Omalogi",
+  "version": "0.1.0",
+  "author": "elberacasa",
+  "license": "MIT OR Apache-2.0",
+  "description": "Onboard profiles for Logitech G-series mice.",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "plugin/Omalogi.qml" }
+}
