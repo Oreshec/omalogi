@@ -18,6 +18,7 @@ use super::format::{DecodeError, Description, READ_CHUNK};
 
 const GET_DESCRIPTION: u8 = 0;
 const GET_MODE: u8 = 2;
+const SET_CURRENT_PROFILE: u8 = 3;
 const GET_CURRENT_PROFILE: u8 = 4;
 const MEMORY_READ: u8 = 5;
 
@@ -81,6 +82,14 @@ impl OnboardProfilesFeature {
     /// The raw active-profile index; see [`super::format::current_profile_position`].
     pub async fn current_profile_index(&self) -> Result<u8, Hidpp20Error> {
         Ok(self.call(GET_CURRENT_PROFILE, &[]).await?[1])
+    }
+
+    /// Selects the active onboard profile. `index` is 1-based like
+    /// [`Self::current_profile_index`]; libratbag sends `index + 1` for its 0-based index.
+    /// Nothing is written to profile memory.
+    pub async fn set_current_profile(&self, index: u8) -> Result<(), Hidpp20Error> {
+        self.call(SET_CURRENT_PROFILE, &[0x00, index]).await?;
+        Ok(())
     }
 
     /// Reads a whole sector, 16 bytes per request.

@@ -1,4 +1,4 @@
-//! A session with a connected device: the HID++ channel, feature lookup, and reads.
+//! A session with a connected device: the HID++ channel, feature lookup, reads and writes.
 
 use std::{
     collections::{BTreeMap, btree_map::Entry},
@@ -7,7 +7,7 @@ use std::{
 };
 
 use hidpp::{
-    channel::{ChannelError, HidppChannel, RequestSwId, SwIdPolicy},
+    channel::{ChannelError, HidppChannel, RawHidChannel, RequestSwId, SwIdPolicy},
     device::{Device, DeviceError},
     feature::{
         CreatableFeature, adjustable_dpi::AdjustableDpiFeature,
@@ -20,10 +20,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
-    hidraw::{self, DeviceNode, HidrawChannel, HidrawError},
+    hidraw::{self, HidrawChannel, HidrawError, SupportedDevice},
     onboard::{
         Mode, OnboardError, OnboardProfilesFeature,
-        format::{self, Description, Profile},
+        format::{self, Description, DirectoryEntry, Profile},
     },
 };
 
@@ -62,6 +62,17 @@ pub enum SessionError {
          the device may never have had profiles written"
     )]
     InvalidDirectoryChecksum,
+    #[error("profile {number} does not exist; the device has {count} profile slots")]
+    NoSuchProfile { number: usize, count: usize },
+    #[error("profile {0} is disabled")]
+    ProfileDisabled(usize),
+    #[error("profiles can only be switched in onboard mode; the device is in {0:?} mode")]
+    NotOnboardMode(Mode),
+    #[error("the device did not switch to profile {requested}; it reports profile {reported:?}")]
+    SwitchNotApplied {
+        requested: usize,
+        reported: Option<usize>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,7 +87,8 @@ pub struct Info {
     pub name: &'static str,
     pub vendor_id: u16,
     pub product_id: u16,
-    pub hidraw: String,
+    /// Where the device was opened, e.g. `/dev/hidraw8`.
+    pub path: String,
     pub firmware: Vec<Firmware>,
     pub dpi: u16,
     /// Every DPI value the sensor accepts.
@@ -120,29 +132,40 @@ pub struct Backup {
 
 pub struct Session {
     device: Device,
-    node: DeviceNode,
+    model: SupportedDevice,
+    path: String,
 }
 
 impl Session {
     /// Opens the first connected supported device. Must be called inside a Tokio runtime.
     pub async fn open() -> Result<Self, SessionError> {
         let node = hidraw::find_supported()?;
-        let raw = HidrawChannel::open(node.clone())?;
+        let path = node.path.display().to_string();
+        let model = node.device;
+        let raw = HidrawChannel::open(node)?;
+        Self::connect(raw, model, path).await
+    }
+
+    /// Starts a session over any HID++ transport, such as an emulated device in tests.
+    pub async fn connect(
+        raw: impl RawHidChannel,
+        model: SupportedDevice,
+        path: String,
+    ) -> Result<Self, SessionError> {
         let mut chan = HidppChannel::from_raw_channel(raw)
             .await
             .map_err(|source| SessionError::Channel {
-                path: node.path.display().to_string(),
+                path: path.clone(),
                 source,
             })?;
         let id = RequestSwId::new(U4::from_lo(SOFTWARE_ID)).expect("software id is non-zero");
         chan.set_sw_id_policy(SwIdPolicy::Fixed(id));
         let device = Device::new(Arc::new(chan), DIRECT_DEVICE_INDEX).await?;
-        Ok(Self { device, node })
-    }
-
-    #[must_use]
-    pub fn node(&self) -> &DeviceNode {
-        &self.node
+        Ok(Self {
+            device,
+            model,
+            path,
+        })
     }
 
     async fn feature<F: CreatableFeature>(
@@ -203,10 +226,10 @@ impl Session {
         let onboard_mode = self.onboard_feature().await?.mode().await?;
 
         Ok(Info {
-            name: self.node.device.name,
-            vendor_id: self.node.device.vendor_id,
-            product_id: self.node.device.product_id,
-            hidraw: self.node.path.display().to_string(),
+            name: self.model.name,
+            vendor_id: self.model.vendor_id,
+            product_id: self.model.product_id,
+            path: self.path.clone(),
             firmware,
             dpi: current_dpi,
             dpi_values,
@@ -223,14 +246,7 @@ impl Session {
         let active_position =
             format::current_profile_position(feature.current_profile_index().await?);
 
-        let directory = feature
-            .read_sector(format::USER_DIRECTORY_SECTOR, description.sector_size)
-            .await?;
-        if !format::sector_crc_valid(&directory) {
-            return Err(SessionError::InvalidDirectoryChecksum);
-        }
-
-        let entries = format::parse_directory(&directory, description.profile_count.into());
+        let entries = read_directory(&feature, &description).await?;
         let mut profiles = Vec::with_capacity(entries.len());
         for (position, entry) in entries.into_iter().enumerate() {
             let sector = feature
@@ -252,6 +268,49 @@ impl Session {
             active_position,
             profiles,
         })
+    }
+
+    /// Makes an enabled profile active, then reads the active profile back to confirm.
+    ///
+    /// `number` is 1-based, as shown to users. Only the active-profile selection
+    /// changes; profile memory is not written.
+    pub async fn activate_profile(&mut self, number: usize) -> Result<(), SessionError> {
+        let feature = self.onboard_feature().await?;
+        let mode = feature.mode().await?;
+        if mode != Mode::Onboard {
+            return Err(SessionError::NotOnboardMode(mode));
+        }
+
+        let description = feature.description().await?;
+        let entries = read_directory(&feature, &description).await?;
+        let no_such_profile = SessionError::NoSuchProfile {
+            number,
+            count: entries.len(),
+        };
+        let Some(entry) = number
+            .checked_sub(1)
+            .and_then(|position| entries.get(position))
+        else {
+            return Err(no_such_profile);
+        };
+        if !entry.enabled {
+            return Err(SessionError::ProfileDisabled(number));
+        }
+        let Ok(index) = u8::try_from(number) else {
+            return Err(no_such_profile);
+        };
+
+        feature.set_current_profile(index).await?;
+
+        let reported = format::current_profile_position(feature.current_profile_index().await?)
+            .map(|position| position + 1);
+        if reported != Some(number) {
+            return Err(SessionError::SwitchNotApplied {
+                requested: number,
+                reported,
+            });
+        }
+        Ok(())
     }
 
     /// Reads the user and ROM profile directories and every sector they list.
@@ -288,9 +347,9 @@ impl Session {
 
         Ok(Backup {
             backup_format: 1,
-            device: self.node.device.name,
-            vendor_id: self.node.device.vendor_id,
-            product_id: self.node.device.product_id,
+            device: self.model.name,
+            vendor_id: self.model.vendor_id,
+            product_id: self.model.product_id,
             firmware,
             description,
             sectors: sectors
@@ -304,6 +363,23 @@ impl Session {
         self.feature::<OnboardProfilesFeature>("onboard profiles (0x8100)")
             .await
     }
+}
+
+/// Reads the user profile directory, refusing one whose checksum does not match.
+async fn read_directory(
+    feature: &OnboardProfilesFeature,
+    description: &Description,
+) -> Result<Vec<DirectoryEntry>, SessionError> {
+    let directory = feature
+        .read_sector(format::USER_DIRECTORY_SECTOR, description.sector_size)
+        .await?;
+    if !format::sector_crc_valid(&directory) {
+        return Err(SessionError::InvalidDirectoryChecksum);
+    }
+    Ok(format::parse_directory(
+        &directory,
+        description.profile_count.into(),
+    ))
 }
 
 /// Expands an AdjustableDPI sensor list: plain values, and `min, 0xE000 | step, max`

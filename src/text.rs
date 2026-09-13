@@ -18,7 +18,7 @@ pub fn info(info: &Info) -> String {
     let _ = writeln!(
         out,
         "{}  {:04x}:{:04x}  {}",
-        info.name, info.vendor_id, info.product_id, info.hidraw
+        info.name, info.vendor_id, info.product_id, info.path
     );
     let firmware: Vec<String> = info
         .firmware

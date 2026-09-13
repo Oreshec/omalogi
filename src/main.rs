@@ -30,13 +30,22 @@ enum Command {
     /// Show the connected device, firmware, DPI and report rate.
     Info,
     /// List onboard profiles with their DPI stages and button bindings.
-    Profiles,
+    Profiles {
+        #[command(subcommand)]
+        action: Option<ProfilesAction>,
+    },
     /// Save all onboard profile memory to a JSON file.
     Backup {
         /// File to write. Defaults to $XDG_STATE_HOME/omalogi/backups/.
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum ProfilesAction {
+    /// Make an enabled profile active. Numbers are as listed by `omalogi profiles`.
+    Activate { number: usize },
 }
 
 fn main() -> ExitCode {
@@ -67,9 +76,25 @@ async fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
             let info = session.info().await?;
             output(cli.json, &info, || text::info(&info))?;
         }
-        Command::Profiles => {
+        Command::Profiles { action: None } => {
             let state = session.onboard().await?;
             output(cli.json, &state, || text::profiles(&state))?;
+        }
+        Command::Profiles {
+            action: Some(ProfilesAction::Activate { number }),
+        } => {
+            session.activate_profile(number).await?;
+            #[derive(Serialize)]
+            struct Activated {
+                active_profile: usize,
+            }
+            output(
+                cli.json,
+                &Activated {
+                    active_profile: number,
+                },
+                || format!("Profile {number} is now active\n"),
+            )?;
         }
         Command::Backup { output: path } => {
             let backup = session.backup().await?;

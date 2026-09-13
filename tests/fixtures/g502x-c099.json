@@ -1,5 +1,5 @@
 {
-  "_about": "Wired Logitech G502 X (046d:c099), firmware U1 60.00.B0009, read 2026-09-13 with research/tools/probe_readonly.py (read-only). Device Unit ID removed.",
+  "_about": "Wired Logitech G502 X (046d:c099), firmware U1 60.00.B0009, read 2026-09-13 with research/tools/probe_readonly.py (read-only). Device Unit ID zeroed in device_info.",
   "protocol": "4.2",
   "features": [
     {
@@ -132,5 +132,10 @@
       "0101": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff8001000180010002800100048001000890070000800100109001000090020000900a00009003000090040000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffffffff",
       "0102": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff80010001800100028001000480010008900b0000800100109001000090020000900a000090030000900400009010000090110000ffffffffffffffffffffffff80010001800100028002011780010008ffffffff800100108002032b8002012b800201278002011d8002011b800300ea800300e9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffffffff"
     }
-  }
+  },
+  "device_info": "02000000000008c09900000000010100",
+  "fw_entities": [
+    "01424c315900000200ab170000000000",
+    "005531206000000901c0990000000000"
+  ]
 }
