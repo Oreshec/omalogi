@@ -11,7 +11,12 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use omalogi::device::Session;
+use omalogi::{
+    daemon,
+    device::{CLI_SOFTWARE_ID, Session},
+    error_chain,
+    rules::Config,
+};
 use serde::Serialize;
 
 #[derive(Parser)]
@@ -27,6 +32,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(flatten)]
+    Device(DeviceCommand),
+    /// Switch onboard profiles automatically as the focused app or monitor changes.
+    Daemon {
+        /// Rules file. Defaults to $XDG_CONFIG_HOME/omalogi/config.toml.
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeviceCommand {
     /// Show the connected device, firmware, DPI and report rate.
     Info,
     /// List onboard profiles with their DPI stages and button bindings.
@@ -60,7 +77,11 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(run(cli)) {
+    let result = match cli.command {
+        Command::Daemon { config } => runtime.block_on(run_daemon(config)),
+        Command::Device(command) => runtime.block_on(run_device(cli.json, command)),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("omalogi: {}", error_chain(error.as_ref()));
@@ -69,18 +90,28 @@ fn main() -> ExitCode {
     }
 }
 
-async fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
-    let mut session = Session::open().await?;
-    match cli.command {
-        Command::Info => {
+async fn run_daemon(config: Option<PathBuf>) -> Result<(), Box<dyn Error>> {
+    let path = match config {
+        Some(path) => path,
+        None => Config::default_path()
+            .ok_or("could not determine the config directory; pass --config")?,
+    };
+    daemon::run(path).await?;
+    Ok(())
+}
+
+async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Error>> {
+    let mut session = Session::open(CLI_SOFTWARE_ID).await?;
+    match command {
+        DeviceCommand::Info => {
             let info = session.info().await?;
-            output(cli.json, &info, || text::info(&info))?;
+            output(json, &info, || text::info(&info))?;
         }
-        Command::Profiles { action: None } => {
+        DeviceCommand::Profiles { action: None } => {
             let state = session.onboard().await?;
-            output(cli.json, &state, || text::profiles(&state))?;
+            output(json, &state, || text::profiles(&state))?;
         }
-        Command::Profiles {
+        DeviceCommand::Profiles {
             action: Some(ProfilesAction::Activate { number }),
         } => {
             session.activate_profile(number).await?;
@@ -89,14 +120,14 @@ async fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
                 active_profile: usize,
             }
             output(
-                cli.json,
+                json,
                 &Activated {
                     active_profile: number,
                 },
                 || format!("Profile {number} is now active\n"),
             )?;
         }
-        Command::Backup { output: path } => {
+        DeviceCommand::Backup { output: path } => {
             let backup = session.backup().await?;
             let path = match path {
                 Some(path) => path,
@@ -115,7 +146,7 @@ async fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
                 path: &path,
                 sectors: backup.sectors.len(),
             };
-            output(cli.json, &saved, || {
+            output(json, &saved, || {
                 format!(
                     "Saved {} onboard memory sectors to {}\n",
                     saved.sectors,
@@ -152,15 +183,4 @@ fn default_backup_path(device: &str) -> Result<PathBuf, Box<dyn Error>> {
     Ok(state_home
         .join("omalogi/backups")
         .join(format!("{slug}-{seconds}.json")))
-}
-
-fn error_chain(error: &dyn Error) -> String {
-    let mut message = error.to_string();
-    let mut source = error.source();
-    while let Some(cause) = source {
-        message.push_str(": ");
-        message.push_str(&cause.to_string());
-        source = cause.source();
-    }
-    message
 }

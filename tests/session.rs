@@ -5,7 +5,7 @@ mod support;
 use std::sync::{Arc, Mutex};
 
 use omalogi::{
-    device::{Session, SessionError},
+    device::{CLI_SOFTWARE_ID, Session, SessionError},
     hidraw::SUPPORTED_DEVICES,
     onboard::{
         Mode,
@@ -21,9 +21,14 @@ async fn connect() -> (Session, Arc<Mutex<State>>, u8) {
     let device = FakeG502x::new();
     let state = device.state();
     let onboard_index = device.feature_index(ONBOARD_PROFILES);
-    let session = Session::connect(device, SUPPORTED_DEVICES[0], "emulated".to_owned())
-        .await
-        .expect("session starts");
+    let session = Session::connect(
+        device,
+        SUPPORTED_DEVICES[0],
+        "emulated".to_owned(),
+        CLI_SOFTWARE_ID,
+    )
+    .await
+    .expect("session starts");
     (session, state, onboard_index)
 }
 

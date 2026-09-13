@@ -1,0 +1,14 @@
+[Unit]
+Description=Omalogi: switch Logitech onboard profiles with Hyprland focus
+Documentation=https://github.com/elberacasa/omalogi
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omalogi daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -31,11 +31,14 @@ use crate::{
 /// Device index of a device connected directly over USB rather than through a receiver.
 const DIRECT_DEVICE_INDEX: u8 = 0xFF;
 
-/// HID++ software id carried by every Omalogi request.
+/// HID++ software id for one-shot CLI commands.
 ///
-/// OpenLogi's agent leases the lowest free ids from 1 upward, one per open channel,
-/// so the highest id keeps the two programs' replies apart while both use the device.
-const SOFTWARE_ID: u8 = 0x0F;
+/// Replies are matched by software id, and every process that opens the device
+/// sees every reply. OpenLogi's agent leases the lowest free ids from 1 upward, one
+/// per open channel, so Omalogi uses the highest ids, a different one per process kind.
+pub const CLI_SOFTWARE_ID: u8 = 0x0F;
+/// HID++ software id for the long-running daemon.
+pub const DAEMON_SOFTWARE_ID: u8 = 0x0E;
 
 /// Marks a `min, 0xE000 | step, max` range inside an AdjustableDPI sensor list.
 const DPI_RANGE_MARKER: u16 = 0xE000;
@@ -50,6 +53,8 @@ pub enum SessionError {
         #[source]
         source: ChannelError,
     },
+    #[error("HID++ software id {0} is outside 1..=15")]
+    InvalidSoftwareId(u8),
     #[error("the device did not answer as a HID++ 2.0 device")]
     Device(#[from] DeviceError),
     #[error("the device does not report the {0} feature")]
@@ -147,12 +152,14 @@ pub struct Session {
 
 impl Session {
     /// Opens the first connected supported device. Must be called inside a Tokio runtime.
-    pub async fn open() -> Result<Self, SessionError> {
+    ///
+    /// `software_id` is [`CLI_SOFTWARE_ID`] or [`DAEMON_SOFTWARE_ID`].
+    pub async fn open(software_id: u8) -> Result<Self, SessionError> {
         let node = hidraw::find_supported()?;
         let path = node.path.display().to_string();
         let model = node.device;
         let raw = HidrawChannel::open(node)?;
-        Self::connect(raw, model, path).await
+        Self::connect(raw, model, path, software_id).await
     }
 
     /// Starts a session over any HID++ transport, such as an emulated device in tests.
@@ -160,14 +167,18 @@ impl Session {
         raw: impl RawHidChannel,
         model: SupportedDevice,
         path: String,
+        software_id: u8,
     ) -> Result<Self, SessionError> {
+        let id = (software_id <= 0x0F)
+            .then(|| RequestSwId::new(U4::from_lo(software_id)))
+            .flatten()
+            .ok_or(SessionError::InvalidSoftwareId(software_id))?;
         let mut chan = HidppChannel::from_raw_channel(raw)
             .await
             .map_err(|source| SessionError::Channel {
                 path: path.clone(),
                 source,
             })?;
-        let id = RequestSwId::new(U4::from_lo(SOFTWARE_ID)).expect("software id is non-zero");
         chan.set_sw_id_policy(SwIdPolicy::Fixed(id));
         let device = Device::new(Arc::new(chan), DIRECT_DEVICE_INDEX).await?;
         Ok(Self {
@@ -325,6 +336,16 @@ impl Session {
             });
         }
         Ok(())
+    }
+
+    /// The active profile number (1-based), with a single request.
+    pub async fn active_profile(&mut self) -> Result<Option<usize>, SessionError> {
+        let index = self
+            .onboard_feature()
+            .await?
+            .current_profile_index()
+            .await?;
+        Ok(format::current_profile_position(index).map(|position| position + 1))
     }
 
     /// Reads the user and ROM profile directories and every sector they list.
