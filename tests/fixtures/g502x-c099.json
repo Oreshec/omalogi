@@ -1,0 +1,136 @@
+{
+  "_about": "Wired Logitech G502 X (046d:c099), firmware U1 60.00.B0009, read 2026-09-13 with research/tools/probe_readonly.py (read-only). Device Unit ID removed.",
+  "protocol": "4.2",
+  "features": [
+    {
+      "index": 1,
+      "id": "0001",
+      "version": 2
+    },
+    {
+      "index": 2,
+      "id": "0003",
+      "version": 4
+    },
+    {
+      "index": 3,
+      "id": "0005",
+      "version": 0
+    },
+    {
+      "index": 4,
+      "id": "0020",
+      "version": 0
+    },
+    {
+      "index": 5,
+      "id": "00c2",
+      "version": 0
+    },
+    {
+      "index": 6,
+      "id": "1801",
+      "version": 0
+    },
+    {
+      "index": 7,
+      "id": "1802",
+      "version": 0
+    },
+    {
+      "index": 8,
+      "id": "1805",
+      "version": 0
+    },
+    {
+      "index": 9,
+      "id": "1806",
+      "version": 8
+    },
+    {
+      "index": 10,
+      "id": "1875",
+      "version": 0
+    },
+    {
+      "index": 11,
+      "id": "18a1",
+      "version": 0
+    },
+    {
+      "index": 12,
+      "id": "18b1",
+      "version": 0
+    },
+    {
+      "index": 13,
+      "id": "18c0",
+      "version": 0
+    },
+    {
+      "index": 14,
+      "id": "1e00",
+      "version": 0
+    },
+    {
+      "index": 15,
+      "id": "1e22",
+      "version": 0
+    },
+    {
+      "index": 16,
+      "id": "1eb0",
+      "version": 0
+    },
+    {
+      "index": 17,
+      "id": "2121",
+      "version": 1
+    },
+    {
+      "index": 18,
+      "id": "2201",
+      "version": 2
+    },
+    {
+      "index": 19,
+      "id": "8060",
+      "version": 0
+    },
+    {
+      "index": 20,
+      "id": "8100",
+      "version": 0
+    },
+    {
+      "index": 21,
+      "id": "8110",
+      "version": 0
+    }
+  ],
+  "dpi_sensor0": {
+    "sensor": 0,
+    "dpi_list_raw": "000064e0326400000000000000000000",
+    "current_raw": "00064006400000000000000000000000"
+  },
+  "report_rate": {
+    "list_bitmap_raw": "8b000000000000000000000000000000",
+    "current_raw": "01000000000000000000000000000000"
+  },
+  "onboard": {
+    "description": "01040105020b1000ff0a010000000000",
+    "mode": "01000000000000000000000000000000",
+    "current_profile": "00010000000000000000000000000000",
+    "sectors": {
+      "0000": "000101ff000201ff000300ff000400ff000500ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8232",
+      "0001": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff8001000180010002800100048001000890070000800100109001000090020000900a00009003000090040000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffff056a",
+      "0002": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff80010001800100028001000480010008900b0000800100109001000090020000900a000090030000900400009010000090110000ffffffffffffffffffffffff80010001800100028002011780010008ffffffff800100108002032b8002012b800201278002011d8002011b800300ea800300e9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffffa096",
+      "0003": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff8001000180010002800100048001000890070000800100109001000090020000900a00009003000090040000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffff056a",
+      "0004": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff8001000180010002800100048001000890070000800100109001000090020000900a00009003000090040000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffff056a",
+      "0005": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff8001000180010002800100048001000890070000800100109001000090020000900a00009003000090040000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffff056a",
+      "0100": "010101ff010201ffffff000103040a0d0e00ffffffffffff87130000000000000100000000000000ffffffff6464000087130000000000000100000000000000ffff2828ffffdcdc87130000000000000100000000000000ffffffffffff141487130000000000000100000000000000ffffdcdc1414ffff87130000000000000100000000000000ffff030000000000004001001f00ffffffffffff7c000000000000007c00ffffffffffff7c000000000000007c00000000000000ffffffff646400007c000000000000007c00ffff646400007c000000000000007c00000000000000ffff2828ffffdcdc7c000000000000007c002828ffffdcdc7c0000",
+      "0101": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff8001000180010002800100048001000890070000800100109001000090020000900a00009003000090040000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffffffff",
+      "0102": "0102002003b00440066009800cffffffff00ffffffffffffffffffffffffffff80010001800100028001000480010008900b0000800100109001000090020000900a000090030000900400009010000090110000ffffffffffffffffffffffff80010001800100028002011780010008ffffffff800100108002032b8002012b800201278002011d8002011b800300ea800300e9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff040000000000004001001f040000000000004001001f00ffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  }
+}
