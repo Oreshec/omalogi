@@ -97,7 +97,13 @@ impl Config {
 
     /// Parses and validates config text. Errors are human-readable.
     pub fn parse(text: &str) -> Result<Self, String> {
-        let config: Self = toml::from_str(text).map_err(|error| error.message().to_owned())?;
+        let config: Self = toml::from_str(text).map_err(|error| match error.span() {
+            Some(span) => {
+                let line = text[..span.start].matches('\n').count() + 1;
+                format!("line {line}: {}", error.message())
+            }
+            None => error.message().to_owned(),
+        })?;
         if config.default_profile == Some(0) {
             return Err("default_profile must be 1 or higher".to_owned());
         }
@@ -238,6 +244,9 @@ mod tests {
         let unknown = Config::parse("[[rule]]\napplication = \"x\"\nprofile = 1\n")
             .expect_err("unknown key is refused");
         assert!(unknown.contains("application"), "{unknown}");
+        let broken =
+            Config::parse("default_profile = 1\n\n[[rule]]\napp = cs2\n").expect_err("broken");
+        assert!(broken.starts_with("line 4: "), "{broken}");
     }
 
     #[test]

@@ -96,6 +96,25 @@ test("dpiStages skips unused stages and marks default and shift", () => {
   ])
 })
 
+test("daemonNote explains automatic switches only for the active profile", () => {
+  const daemon = { connected: true, active_profile: 2, source: "rule 1", app: "cs2", error: null }
+  assert.equal(Model.daemonNote(daemon, slot({ active: true })), "Set automatically by rule 1 for cs2")
+  assert.equal(
+    Model.daemonNote({ ...daemon, source: "default" }, slot({ active: true })),
+    "Set automatically as the default profile"
+  )
+  assert.equal(Model.daemonNote(daemon, slot({ active: false })), "")
+  assert.equal(Model.daemonNote({ ...daemon, source: null }, slot({ active: true })), "")
+  assert.equal(Model.daemonNote({ ...daemon, active_profile: 1 }, slot({ active: true })), "")
+  assert.equal(Model.daemonNote(null, slot({ active: true })), "")
+})
+
+test("daemonProblem surfaces daemon errors", () => {
+  assert.equal(Model.daemonProblem({ error: "rule 2: profile 3 is disabled" }), "Auto-switching: rule 2: profile 3 is disabled")
+  assert.equal(Model.daemonProblem({ error: null }), "")
+  assert.equal(Model.daemonProblem(null), "")
+})
+
 test("boundSlots keeps slot numbers of bound buttons", () => {
   const slots = JSON.parse(JSON.stringify(Model.boundSlots(["left click", null, "DPI up"])))
   assert.deepEqual(slots, [

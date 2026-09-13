@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
@@ -23,8 +24,12 @@ Item {
   property string notice: ""
   property bool noticeIsError: false
   property int cursor: 0
+  // The daemon's published state, or null when it is not running.
+  property var daemon: null
 
   readonly property var profiles: root.onboard ? root.onboard.profiles : []
+  readonly property string footerText: root.notice !== "" ? root.notice : Model.daemonProblem(root.daemon)
+  readonly property bool footerIsError: root.notice !== "" ? root.noticeIsError : root.footerText !== ""
   readonly property var selected: root.profiles.length > 0
     ? root.profiles[Model.clampCursor(root.cursor, root.profiles.length)]
     : null
@@ -131,6 +136,24 @@ Item {
       }
       profilesCommand.start(["profiles", "--json"])
     }
+  }
+
+  function daemonUpdated(state) {
+    var previous = root.daemon
+    root.daemon = state
+    // The daemon switched profiles while the overlay is open: show the new active one.
+    var switched = state !== null && (previous === null || previous.active_profile !== state.active_profile)
+    if (root.opened && root.ready && switched) profilesCommand.start(["profiles", "--json"])
+  }
+
+  FileView {
+    path: Quickshell.env("XDG_RUNTIME_DIR") + "/omalogi/state.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.daemonUpdated(Model.parseJson(text()))
+    // text() is stale inside the change signal, so re-read and parse in onLoaded.
+    onFileChanged: reload()
+    onLoadFailed: root.daemonUpdated(null)
   }
 
   ParallelAnimation {
@@ -417,6 +440,13 @@ Item {
                     text: root.selected ? Model.profileStatus(root.selected) : ""
                     font.pixelSize: Style.font.body
                   }
+
+                  Caption {
+                    width: parent.width
+                    visible: text !== ""
+                    text: root.selected ? Model.daemonNote(root.daemon, root.selected) : ""
+                    font.pixelSize: Style.font.body
+                  }
                 }
 
                 Button {
@@ -502,8 +532,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - hints.width - Style.spacing.panelGap
             textFormat: Text.PlainText
-            text: root.notice
-            color: root.noticeIsError ? Color.urgent : Color.menu.text
+            text: root.footerText
+            color: root.footerIsError ? Color.urgent : Color.menu.text
             elide: Text.ElideRight
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.body

@@ -81,6 +81,19 @@ function dpiStages(profile) {
   return stages
 }
 
+// Why the daemon activated this profile, or "" when it did not (or is not running).
+function daemonNote(daemon, slot) {
+  if (!daemon || !daemon.connected || !daemon.source || !slot.active) return ""
+  if (daemon.active_profile !== slot.position + 1) return ""
+  if (daemon.source === "default") return "Set automatically as the default profile"
+  return "Set automatically by " + daemon.source + (daemon.app ? " for " + daemon.app : "")
+}
+
+// A problem the daemon reports, ready for the footer, or "".
+function daemonProblem(daemon) {
+  return daemon && daemon.error ? "Auto-switching: " + daemon.error : ""
+}
+
 // Bound slots as {slot, label}. omalogi sends null for unbound slots.
 function boundSlots(labels) {
   var slots = []
