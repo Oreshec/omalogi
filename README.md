@@ -9,7 +9,7 @@ per monitor, and an overlay and bar indicator that follow your Omarchy theme.
 Omalogi talks to the mouse over HID++ 2.0, writes only what you change, backs up the
 mouse's profile memory before every write, and reads every write back to verify it.
 
-![Omalogi editing the G502 X: the action library, Front and Side view tiles, and the mouse with a label per button](docs/images/overlay-buttons.png)
+![A tour of Omalogi on the G502 X: button assignments, the G-Shift layer, a button's menu on the side view, and DPI levels](docs/images/omalogi-tour.gif)
 
 ## Supported devices
 
