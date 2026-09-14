@@ -1,0 +1,37 @@
+name: Bug report
+description: Something in Omalogi does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Omalogi from the bar
+        2. …
+  - type: textarea
+    id: info
+    attributes:
+      label: Output of `omalogi --version` and `omalogi --json info`
+      description: This names the mouse and firmware. Do not attach backups or device dumps; they contain your mouse's unit ID.
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: omarchy
+    attributes:
+      label: Omarchy version
+      placeholder: omarchy-version
+  - type: textarea
+    id: log
+    attributes:
+      label: Shell log, for overlay problems
+      description: "`quickshell log -p \"$OMARCHY_PATH/shell\" --any-display | grep -i omalogi`"
+      render: text

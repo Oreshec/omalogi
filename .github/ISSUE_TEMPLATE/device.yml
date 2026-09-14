@@ -1,0 +1,37 @@
+name: Support for another mouse
+description: Ask for a Logitech mouse Omalogi does not support yet.
+labels: [device]
+body:
+  - type: markdown
+    attributes:
+      value: Omalogi only writes to layouts verified on a real device, so a new mouse needs someone who owns it to run a few read-only checks.
+  - type: input
+    id: model
+    attributes:
+      label: Mouse model
+      placeholder: Logitech G305
+    validations:
+      required: true
+  - type: input
+    id: usb
+    attributes:
+      label: USB id
+      description: "From `lsusb | grep -i logitech`, e.g. 046d:c099."
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - Wired
+        - LIGHTSPEED receiver
+        - Bluetooth
+    validations:
+      required: true
+  - type: checkboxes
+    id: testing
+    attributes:
+      label: Testing
+      options:
+        - label: I can run read-only checks on this mouse and share the results.

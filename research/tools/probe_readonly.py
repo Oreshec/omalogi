@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only HID++ 2.0 probe for the wired Logitech G502 X (046d:c099).
 
-Phase 0 research tooling, not project code. Safety properties:
+Research tooling from the first device probe, not project code. Safety properties:
   * The node is found through sysfs: vendor 046d, product c099, and a report
     descriptor containing HID++ short/long reports (vendor page 0xFF00, IDs
     0x10/0x11). Nothing is hardcoded to a hidraw number.

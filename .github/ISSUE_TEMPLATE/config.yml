@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/elberacasa/omalogi/security/advisories/new
+    about: Report anything that could damage a mouse or grant more access than it should, privately.
