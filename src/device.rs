@@ -22,7 +22,7 @@ use thiserror::Error;
 use crate::{
     hidraw::{self, HidrawChannel, HidrawError, SupportedDevice},
     onboard::{
-        Mode, OnboardError, OnboardProfilesFeature,
+        Mode, OnboardError, OnboardProfilesFeature, action,
         format::{self, Binding, Description, DirectoryEntry, Profile},
         label,
     },
@@ -114,6 +114,15 @@ pub struct ProfileSlot {
     pub crc_valid: bool,
     pub profile: Profile,
     pub labels: BindingLabels,
+    pub actions: BindingActions,
+}
+
+/// Each binding as the action text `profiles edit --button` accepts, aligned with its
+/// slots; `None` for bindings that cannot be typed, such as macros.
+#[derive(Debug, Clone, Serialize)]
+pub struct BindingActions {
+    pub buttons: Vec<Option<String>>,
+    pub gshift_buttons: Vec<Option<String>>,
 }
 
 /// Readable names for a profile's bindings, aligned with its slots; `None` for unbound slots.
@@ -287,6 +296,14 @@ impl Session {
                 labels: BindingLabels {
                     buttons: labels_for(&profile.buttons),
                     gshift_buttons: labels_for(&profile.gshift_buttons),
+                },
+                actions: BindingActions {
+                    buttons: profile.buttons.iter().map(action::action_text).collect(),
+                    gshift_buttons: profile
+                        .gshift_buttons
+                        .iter()
+                        .map(action::action_text)
+                        .collect(),
                 },
                 profile,
             });

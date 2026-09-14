@@ -117,6 +117,110 @@ function indicatorTooltip(daemon) {
   return text
 }
 
+// ---- Editing ---------------------------------------------------------------
+// A draft is a profile in the terms `omalogi profiles edit` accepts. Drafts are
+// replaced, never mutated, so QML bindings see every change.
+
+function copyDraft(draft) {
+  return {
+    number: draft.number,
+    dpiStages: draft.dpiStages.slice(),
+    defaultDpi: draft.defaultDpi,
+    shiftDpi: draft.shiftDpi,
+    rateHz: draft.rateHz,
+    buttons: draft.buttons.slice(),
+    gshift: draft.gshift.slice()
+  }
+}
+
+function draftFromSlot(slot) {
+  var p = slot.profile
+  var stage = function(index) {
+    var dpi = p.dpi_stages[index]
+    return dpi === undefined ? null : dpi
+  }
+  return {
+    number: slot.position + 1,
+    dpiStages: p.dpi_stages.filter(function(dpi) { return dpi !== null }),
+    defaultDpi: stage(p.default_dpi_index),
+    shiftDpi: stage(p.shift_dpi_index),
+    rateHz: p.report_rate_ms > 0 ? Math.round(1000 / p.report_rate_ms) : null,
+    buttons: (slot.actions.buttons || []).slice(),
+    gshift: (slot.actions.gshift_buttons || []).slice()
+  }
+}
+
+// Changes one stage; the default and shift stages follow it when they pointed at it.
+function setStage(draft, index, dpi) {
+  var next = copyDraft(draft)
+  var old = next.dpiStages[index]
+  next.dpiStages[index] = dpi
+  if (next.defaultDpi === old) next.defaultDpi = dpi
+  if (next.shiftDpi === old) next.shiftDpi = dpi
+  return next
+}
+
+function addStage(draft, dpi) {
+  var next = copyDraft(draft)
+  if (next.dpiStages.length < 5) next.dpiStages.push(dpi)
+  return next
+}
+
+// Removes a stage; a default or shift stage that pointed at it must be chosen again.
+function removeStage(draft, index) {
+  var next = copyDraft(draft)
+  var removed = next.dpiStages.splice(index, 1)[0]
+  if (next.dpiStages.indexOf(removed) === -1) {
+    if (next.defaultDpi === removed) next.defaultDpi = null
+    if (next.shiftDpi === removed) next.shiftDpi = null
+  }
+  return next
+}
+
+function setField(draft, field, value) {
+  var next = copyDraft(draft)
+  next[field] = value
+  return next
+}
+
+function setBinding(draft, table, slot, action) {
+  var next = copyDraft(draft)
+  next[table][slot] = action
+  return next
+}
+
+// What still has to be chosen before the draft can be written, or "".
+function draftProblem(draft) {
+  if (draft.dpiStages.length === 0) return "Add at least one DPI stage."
+  if (draft.defaultDpi === null || draft.dpiStages.indexOf(draft.defaultDpi) === -1) return "Choose the default DPI stage."
+  if (draft.shiftDpi === null || draft.dpiStages.indexOf(draft.shiftDpi) === -1) return "Choose the DPI shift stage."
+  return ""
+}
+
+// Arguments for `omalogi profiles edit`, covering only what differs from `original`.
+function editArgs(draft, original, dryRun) {
+  var args = ["profiles", "edit", String(draft.number)]
+  var stagesChanged = draft.dpiStages.join(",") !== original.dpiStages.join(",")
+  if (stagesChanged) args.push("--dpi", draft.dpiStages.join(","))
+  if ((stagesChanged || draft.defaultDpi !== original.defaultDpi) && draft.defaultDpi !== null)
+    args.push("--default-dpi", String(draft.defaultDpi))
+  if ((stagesChanged || draft.shiftDpi !== original.shiftDpi) && draft.shiftDpi !== null)
+    args.push("--shift-dpi", String(draft.shiftDpi))
+  if (draft.rateHz !== original.rateHz && draft.rateHz !== null) args.push("--rate", String(draft.rateHz))
+  var tables = [["buttons", "--button"], ["gshift", "--gshift"]]
+  tables.forEach(function(table) {
+    draft[table[0]].forEach(function(action, slot) {
+      if (action !== null && action !== original[table[0]][slot]) args.push(table[1], slot + "=" + action)
+    })
+  })
+  if (dryRun) args.push("--dry-run")
+  return args
+}
+
+function hasChanges(draft, original) {
+  return editArgs(draft, original, false).length > 3
+}
+
 // Bound slots as {slot, label}. omalogi sends null for unbound slots.
 function boundSlots(labels) {
   var slots = []

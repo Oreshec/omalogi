@@ -123,6 +123,127 @@ pub fn parse_action(text: &str) -> Result<Binding, String> {
     ))
 }
 
+/// One entry of the action list offered to users, e.g. in the shell plugin.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ActionInfo {
+    /// The text [`parse_action`] accepts. `key:` alone asks for a shortcut to type.
+    pub value: String,
+    pub label: String,
+    pub group: &'static str,
+}
+
+/// Every action a button can be bound to, grouped for display.
+#[must_use]
+pub fn catalog() -> Vec<ActionInfo> {
+    let entry = |value: String, group: &'static str| {
+        let label = parse_action(&value)
+            .map(|binding| super::label::binding(&binding))
+            .expect("catalog values parse");
+        ActionInfo {
+            value,
+            label,
+            group,
+        }
+    };
+    let mut actions: Vec<ActionInfo> = MOUSE_BUTTONS
+        .iter()
+        .map(|(name, _)| entry((*name).to_owned(), "Mouse"))
+        .collect();
+    for (name, action) in SPECIALS {
+        let group = match action {
+            SpecialAction::TiltLeft
+            | SpecialAction::TiltRight
+            | SpecialAction::ScrollUp
+            | SpecialAction::ScrollDown => "Scroll",
+            SpecialAction::NextProfile
+            | SpecialAction::PreviousProfile
+            | SpecialAction::CycleProfile => "Profiles",
+            SpecialAction::GShift => "Other",
+            _ => "DPI",
+        };
+        actions.push(entry((*name).to_owned(), group));
+    }
+    actions.extend(
+        MEDIA
+            .iter()
+            .map(|(name, _)| entry(format!("media:{name}"), "Media")),
+    );
+    actions.push(ActionInfo {
+        value: "key:".to_owned(),
+        label: "Keyboard shortcut…".to_owned(),
+        group: "Keyboard",
+    });
+    actions.push(entry("disabled".to_owned(), "Other"));
+    actions
+}
+
+/// The action text [`parse_action`] reads back into `binding`, or `None` for bindings
+/// that cannot be typed: macros, unknown encodings, right-hand modifiers, and several
+/// mouse buttons at once.
+#[must_use]
+pub fn action_text(binding: &Binding) -> Option<String> {
+    match *binding {
+        Binding::Disabled => Some("disabled".to_owned()),
+        Binding::Mouse { buttons } if buttons.count_ones() == 1 => {
+            let button = u16::try_from(buttons.trailing_zeros()).expect("below 16") + 1;
+            Some(
+                MOUSE_BUTTONS
+                    .iter()
+                    .find(|(_, number)| *number == button)
+                    .map_or_else(
+                        || format!("button:{button}"),
+                        |(name, _)| (*name).to_owned(),
+                    ),
+            )
+        }
+        Binding::Special {
+            action: Some(action),
+            profile: 0,
+            ..
+        } => SPECIALS
+            .iter()
+            .find(|(_, special)| *special == action)
+            .map(|(name, _)| (*name).to_owned()),
+        Binding::Consumer { usage } => MEDIA
+            .iter()
+            .find(|(_, media)| *media == usage)
+            .map(|(name, _)| format!("media:{name}")),
+        Binding::Key { modifiers, key } => {
+            if modifiers & 0xF0 != 0 {
+                return None;
+            }
+            let mut parts: Vec<String> = MODIFIERS
+                .iter()
+                .filter(|(_, bit)| modifiers & (1 << bit) != 0)
+                .map(|(name, _)| (*name).to_owned())
+                .collect();
+            parts.push(key_text(key)?);
+            Some(format!("key:{}", parts.join("+")))
+        }
+        _ => None,
+    }
+}
+
+/// The key name [`key_usage`] maps from.
+fn key_text(usage: u8) -> Option<String> {
+    Some(match usage {
+        0x04..=0x1D => char::from(b'a' + (usage - 0x04)).to_string(),
+        0x1E..=0x26 => char::from(b'1' + (usage - 0x1E)).to_string(),
+        0x27 => "0".to_owned(),
+        0x28 => "enter".to_owned(),
+        0x29 => "esc".to_owned(),
+        0x2A => "backspace".to_owned(),
+        0x2B => "tab".to_owned(),
+        0x2C => "space".to_owned(),
+        0x3A..=0x45 => format!("f{}", usage - 0x39),
+        0x4F => "right".to_owned(),
+        0x50 => "left".to_owned(),
+        0x51 => "down".to_owned(),
+        0x52 => "up".to_owned(),
+        _ => return None,
+    })
+}
+
 fn mouse(button: u16) -> Binding {
     Binding::Mouse {
         buttons: 1 << (button - 1),
@@ -250,6 +371,83 @@ mod tests {
                 .expect_err("media")
                 .contains("volume-up")
         );
+    }
+
+    #[test]
+    fn catalog_values_parse_to_their_labels() {
+        let actions = catalog();
+        let mut values: Vec<&str> = actions.iter().map(|a| a.value.as_str()).collect();
+        values.sort_unstable();
+        values.dedup();
+        assert_eq!(values.len(), actions.len(), "values are unique");
+        for action in actions.iter().filter(|a| a.value != "key:") {
+            assert_eq!(label_of(&action.value), action.label, "{}", action.value);
+        }
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.value == "key:" && a.group == "Keyboard")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.value == "dpi-shift" && a.group == "DPI")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.value == "media:mute" && a.group == "Media")
+        );
+    }
+
+    #[test]
+    fn action_text_reads_back_into_the_same_binding() {
+        for action in catalog().iter().filter(|a| a.value != "key:") {
+            let binding = parse_action(&action.value).expect("catalog value parses");
+            assert_eq!(
+                action_text(&binding).as_deref(),
+                Some(action.value.as_str())
+            );
+        }
+        for text in [
+            "key:ctrl+t",
+            "key:ctrl+shift+tab",
+            "key:super+f12",
+            "key:alt+0",
+            "button:7",
+        ] {
+            let binding = parse_action(text).expect("parses");
+            assert_eq!(action_text(&binding).as_deref(), Some(text));
+        }
+    }
+
+    #[test]
+    fn action_text_names_the_g502x_gshift_bindings() {
+        let text = |raw| action_text(&Binding::decode(raw));
+        assert_eq!(
+            text([0x80, 0x02, 0x01, 0x17]).as_deref(),
+            Some("key:ctrl+t")
+        );
+        assert_eq!(
+            text([0x80, 0x02, 0x03, 0x2B]).as_deref(),
+            Some("key:ctrl+shift+tab")
+        );
+        assert_eq!(
+            text([0x80, 0x03, 0x00, 0xEA]).as_deref(),
+            Some("media:volume-down")
+        );
+        assert_eq!(text([0x90, 0x0B, 0x00, 0x00]).as_deref(), Some("gshift"));
+    }
+
+    #[test]
+    fn untypeable_bindings_have_no_action_text() {
+        let text = |raw| action_text(&Binding::decode(raw));
+        assert_eq!(text([0x00, 0x01, 0x00, 0x10]), None, "macro");
+        assert_eq!(text([0x80, 0x07, 0x00, 0x00]), None, "unknown encoding");
+        assert_eq!(text([0x80, 0x02, 0x10, 0x17]), None, "right ctrl");
+        assert_eq!(text([0x80, 0x01, 0x00, 0x03]), None, "two mouse buttons");
+        assert_eq!(text([0x90, 0x0C, 0x00, 0x00]), None, "battery indicator");
+        assert_eq!(text([0x80, 0x02, 0x00, 0x68]), None, "unnamed key");
     }
 
     #[test]

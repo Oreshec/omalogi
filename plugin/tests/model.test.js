@@ -141,6 +141,86 @@ test("indicator explains missing daemon, device and errors", () => {
   )
 })
 
+function editableSlot() {
+  return {
+    position: 1,
+    enabled: true,
+    active: true,
+    profile: {
+      name: null,
+      report_rate_ms: 1,
+      default_dpi_index: 2,
+      shift_dpi_index: 0,
+      dpi_stages: [800, 1200, 1600, 2400, 3200]
+    },
+    actions: {
+      buttons: ["left", "right", "middle", "back", "gshift", "forward", "scroll-left", null],
+      gshift_buttons: [null, null, "key:ctrl+t", null, null, null, null, null]
+    }
+  }
+}
+
+const plain = (value) => JSON.parse(JSON.stringify(value))
+
+test("draftFromSlot uses the terms profiles edit accepts", () => {
+  const draft = plain(Model.draftFromSlot(editableSlot()))
+  assert.deepEqual(draft, {
+    number: 2,
+    dpiStages: [800, 1200, 1600, 2400, 3200],
+    defaultDpi: 1600,
+    shiftDpi: 800,
+    rateHz: 1000,
+    buttons: ["left", "right", "middle", "back", "gshift", "forward", "scroll-left", null],
+    gshift: [null, null, "key:ctrl+t", null, null, null, null, null]
+  })
+})
+
+test("an untouched draft has no changes", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  assert.equal(Model.hasChanges(original, original), false)
+  assert.equal(Model.draftProblem(original), "")
+})
+
+test("editArgs lists only what changed", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  let draft = Model.setField(original, "rateHz", 500)
+  draft = Model.setBinding(draft, "buttons", 6, "key:ctrl+a")
+  draft = Model.setBinding(draft, "gshift", 2, "media:mute")
+  assert.deepEqual(plain(Model.editArgs(draft, original, true)), [
+    "profiles", "edit", "2", "--rate", "500",
+    "--button", "6=key:ctrl+a", "--gshift", "2=media:mute", "--dry-run"
+  ])
+  assert.equal(original.rateHz, 1000, "drafts are copied, not mutated")
+})
+
+test("changing stages sends the default and shift they point at", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  const draft = Model.setStage(original, 0, 400)
+  assert.equal(draft.shiftDpi, 400, "shift follows the stage it pointed at")
+  assert.deepEqual(plain(Model.editArgs(draft, original, false)), [
+    "profiles", "edit", "2",
+    "--dpi", "400,1200,1600,2400,3200", "--default-dpi", "1600", "--shift-dpi", "400"
+  ])
+})
+
+test("removing the default stage asks for a new one", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  let draft = Model.removeStage(original, 2)
+  assert.deepEqual(plain(draft.dpiStages), [800, 1200, 2400, 3200])
+  assert.equal(draft.defaultDpi, null)
+  assert.equal(Model.draftProblem(draft), "Choose the default DPI stage.")
+  draft = Model.setField(draft, "defaultDpi", 1200)
+  assert.equal(Model.draftProblem(draft), "")
+})
+
+test("stages are capped at five and must not be empty", () => {
+  let draft = Model.draftFromSlot(editableSlot())
+  draft = Model.addStage(draft, 6400)
+  assert.equal(draft.dpiStages.length, 5)
+  for (let i = 0; i < 5; i++) draft = Model.removeStage(draft, 0)
+  assert.equal(Model.draftProblem(draft), "Add at least one DPI stage.")
+})
+
 test("boundSlots keeps slot numbers of bound buttons", () => {
   const slots = JSON.parse(JSON.stringify(Model.boundSlots(["left click", null, "DPI up"])))
   assert.deepEqual(slots, [

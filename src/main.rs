@@ -16,7 +16,10 @@ use omalogi::{
     editing::{BackupFile, ProfileChanges, save_backup},
     error_chain,
     lock::DeviceLock,
-    onboard::{action::parse_action, format::Binding},
+    onboard::{
+        action::{catalog, parse_action},
+        format::Binding,
+    },
     rules::Config,
 };
 use serde::Serialize;
@@ -36,6 +39,8 @@ struct Cli {
 enum Command {
     #[command(flatten)]
     Device(DeviceCommand),
+    /// List the actions buttons can be bound to, as accepted by `profiles edit --button`.
+    Actions,
     /// Switch onboard profiles automatically as the focused app or monitor changes.
     Daemon {
         /// Rules file. Defaults to $XDG_CONFIG_HOME/omalogi/config.toml.
@@ -120,6 +125,7 @@ fn main() -> ExitCode {
         }
     };
     let result = match cli.command {
+        Command::Actions => print_actions(cli.json),
         Command::Daemon { config } => runtime.block_on(run_daemon(config)),
         Command::Device(command) => runtime.block_on(run_device(cli.json, command)),
     };
@@ -130,6 +136,20 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn print_actions(json: bool) -> Result<(), Box<dyn Error>> {
+    let actions = catalog();
+    output(json, &actions, || {
+        actions.iter().fold(String::new(), |mut out, action| {
+            out.push_str(&format!(
+                "{:<9} {:<21} {}\n",
+                action.group, action.value, action.label
+            ));
+            out
+        })
+    })?;
+    Ok(())
 }
 
 async fn run_daemon(config: Option<PathBuf>) -> Result<(), Box<dyn Error>> {
