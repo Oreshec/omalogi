@@ -250,6 +250,19 @@ test("canvas helpers index entries and find the ones without a position", () => 
   assert.deepEqual(plain(Model.entriesWithoutHotspot(entries, [])), entries)
 })
 
+test("assignedNames lists the buttons that use an action", () => {
+  const entries = [
+    { name: "G1", action: "left" },
+    { name: "G4", action: "back" },
+    { name: "G7", action: "key:ctrl+t" },
+    { name: "G8", action: "back" }
+  ]
+  assert.deepEqual(plain(Model.assignedNames(entries, "back")), ["G4", "G8"])
+  assert.deepEqual(plain(Model.assignedNames(entries, "key:")), ["G7"])
+  assert.deepEqual(plain(Model.assignedNames(entries, "forward")), [])
+  assert.deepEqual(plain(Model.assignedNames(null, "back")), [])
+})
+
 test("viewForSlot finds the view that shows a button", () => {
   const views = [{ hotspots: [{ slot: 0 }, { slot: 9 }] }, { hotspots: [{ slot: 3 }] }]
   assert.equal(Model.viewForSlot(views, 9), 0)

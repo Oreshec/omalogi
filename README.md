@@ -144,12 +144,17 @@ omarchy-shell shell toggle io.github.elberacasa.omalogi '{}'
 
 Every profile opens ready to edit, including profiles that are turned off on the mouse.
 
-- **Buttons** and **G-Shift** show the mouse with a card for each button. Click a button
-  or its card to see what it does and pick something else: actions are grouped (mouse,
-  keyboard, media, DPI, profiles, scroll) and searchable. **Keyboard shortcut…** records
-  the keys you press, as physical keys, so your keyboard layout does not matter.
-- **Sensitivity** holds the DPI stages (select one to set its value with the slider, make
-  it the default or DPI shift stage, or remove it) and the report rate.
+- **Assignments** shows the mouse one view at a time, as G HUB does: **‹ ›** switch
+  between the top and side views, and the **Default / G-Shift** switch underneath swaps
+  layers. Drag an action from the library onto a button, or select a button and pick one.
+  The library is grouped (mouse, keyboard, media, DPI, profiles, scroll) and searchable,
+  and shows which buttons already use each action. A selected button offers **Use
+  default** (the mouse's own factory binding), **Disable**, and **Record a shortcut…**,
+  which records the keys you press as physical keys, so your keyboard layout does not
+  matter.
+- **Sensitivity** puts every DPI level on one bar: drag a level to change it, or away from
+  the bar to remove it, click the bar to add one, and set the default and DPI shift
+  levels. The report rate is below.
 - Changes save themselves. A pick, a click or a released slider is written to the mouse
   almost at once; a typed value waits for a short pause. The footer says when the change
   is in use, or that it applies once you activate the profile. Before the first write of
@@ -158,9 +163,10 @@ Every profile opens ready to edit, including profiles that are turned off on the
   back what each earlier write replaced, one at a time. Switching profiles or closing
   the overlay saves what is pending first.
 
-Keys: `↑`/`↓` or `j`/`k` switch profile, `1` `2` `3` switch view, `Enter` activates the
-profile, `Ctrl+Z` undoes, `Ctrl+S` saves now, `r` refreshes, `Esc` clears the selection and
-then closes.
+Keys: `↑`/`↓` or `j`/`k` switch profile, `←`/`→` or `h`/`l` switch view, `g` switches
+between the default and G-Shift layers, `1` `2` switch page, `Enter` activates the
+profile, `Ctrl+Z` undoes, `Ctrl+S` saves now, `r` refreshes, `Esc` clears the selection
+and then closes.
 
 The overlay talks to the mouse through `omalogi serve`, one long-lived connection that
 starts when the overlay opens and stops after it closes, so edits do not wait for a

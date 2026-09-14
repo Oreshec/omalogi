@@ -17,12 +17,14 @@ All notable changes are listed here. The project follows
 - `omalogi restore <FILE>` writes profile memory back from a backup, with `--dry-run`.
 - `omalogi daemon` switches profiles per app and per monitor from rules in
   `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.
-- Omarchy shell plugin: a G HUB-style editor with the mouse, a card and leader line per
-  button, a grouped and searchable action picker, a shortcut recorder, a G-Shift layer,
-  DPI stages and report rate. Changes save themselves (about 0.3 s to take effect on the
-  profile in use) with Undo; the session's first write is preceded by a backup of all
-  profile memory. Opens on a given profile, view or button. Plus a bar indicator for the
-  active profile.
+- Omarchy shell plugin: a G HUB-style editor. The mouse is shown one view at a time (top
+  or side) with a label and line per button and a Default / G-Shift switch; actions are
+  dragged from a grouped, searchable library onto buttons, or picked for the selected
+  one, which also offers Use default (the mouse's factory binding), Disable and a
+  shortcut recorder. Sensitivity puts the DPI levels on one draggable bar. Changes save
+  themselves (about 0.3 s to take effect on the profile in use) with Undo; the session's
+  first write is preceded by a backup of all profile memory. Opens on a given profile,
+  view or button. Plus a bar indicator for the active profile.
 - `omalogi serve`, the overlay's long-lived connection to the mouse: JSON requests on
   stdin, answers on stdout, with an undo stack.
 - `omalogi dpi [VALUE]` shows the sensor's live DPI (setting it is refused by the G502 X

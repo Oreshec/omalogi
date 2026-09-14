@@ -50,8 +50,8 @@ pub const PLUGIN_FILES: &[(&str, &str)] = &[
         include_str!("../plugin/DeviceCanvas.qml"),
     ),
     (
-        "plugin/ActionInspector.qml",
-        include_str!("../plugin/ActionInspector.qml"),
+        "plugin/ActionLibrary.qml",
+        include_str!("../plugin/ActionLibrary.qml"),
     ),
     (
         "plugin/SensitivityPanel.qml",

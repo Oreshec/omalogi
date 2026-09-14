@@ -31,8 +31,10 @@ Item {
   property bool noticeIsError: false
   property int cursor: 0
 
-  // "buttons", "gshift" or "sensitivity".
+  // "buttons" or "gshift" (the Assignments page, by layer), or "sensitivity".
   property string tab: "buttons"
+  // Which picture view the Assignments page shows.
+  property int viewIndex: 0
   // The selected profile as the mouse has it, and with the edits not saved yet.
   property var original: null
   property var draft: null
@@ -63,6 +65,7 @@ Item {
   readonly property var views: Model.pictureViews(root.picture)
   readonly property bool slotsVerified: root.picture !== null && root.picture.slots_verified === true
   readonly property int buttonCount: root.onboard ? root.onboard.description.button_count : 0
+  readonly property bool assignments: root.tab !== "sensitivity"
   readonly property string table: root.tab === "gshift" ? "gshift" : "buttons"
   readonly property var entries: Model.slotEntries(
     root.selected, root.draft, root.original, root.catalog, root.table, root.buttonCount, root.slotsVerified)
@@ -70,13 +73,22 @@ Item {
     var entry = Model.indexBySlot(root.entries)[root.selectedSlot]
     return entry === undefined ? null : entry
   }
-  readonly property bool anyDisabled: root.profiles.some(function(slot) { return !slot.enabled })
+  readonly property var profileOptions: root.profiles.map(function(slot) {
+    var status = slot.active ? "In use" : (slot.enabled ? "" : "Off")
+    return { value: String(slot.position), label: Model.profileTitle(slot) + (status !== "" ? "  ·  " + status : "") }
+  })
 
-  readonly property int cardWidth: Math.min(Style.space(1400), panel.width - Style.gapsOut * 2)
-  readonly property int cardHeight: Math.min(Style.space(820), panel.height - Style.gapsOut * 2)
-  readonly property int headerHeight: Math.max(Style.space(40), Style.font.heading + Style.spacing.controlPaddingY * 2)
-  readonly property int railWidth: Style.space(196)
-  readonly property int inspectorWidth: Style.space(340)
+  readonly property int cardWidth: Math.min(Style.space(1440), panel.width - Style.gapsOut * 2)
+  readonly property int cardHeight: Math.min(Style.space(860), panel.height - Style.gapsOut * 2)
+  readonly property int headerHeight: Math.max(Style.space(44), Style.spacing.controlHeight + Style.spacing.sm)
+  readonly property int railWidth: Style.space(52)
+  readonly property int libraryWidth: Style.space(330)
+
+  onSelectedSlotChanged: {
+    // Show the view that has the selected button.
+    var view = Model.viewForSlot(root.views, root.selectedSlot)
+    if (view !== -1) root.viewIndex = view
+  }
 
   function open(payloadJson) {
     exitAnimation.stop()
@@ -103,6 +115,7 @@ Item {
   function finishClose() {
     root.mounted = false
     root.selectedSlot = -1
+    library.stopRecording()
     root.stopServerWhenIdle()
     if (root.shell && root.manifest) root.shell.hide(root.manifest.id)
   }
@@ -182,15 +195,15 @@ Item {
     saveTimer.restart()
   }
 
-  function choose(action) {
-    if (!root.draft || root.selectedSlot < 0) return
-    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, action), true)
+  function assign(slot, action) {
+    if (!root.draft || slot < 0 || !action) return
+    root.selectedSlot = slot
+    root.updateDraft(Model.setBinding(root.draft, root.table, slot, action), true)
   }
 
-  function revertSlot() {
-    if (!root.draft || root.selectedSlot < 0) return
-    var saved = root.original[root.table][root.selectedSlot]
-    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, saved), true)
+  function revertSlot(slot) {
+    if (!root.draft || slot < 0) return
+    root.updateDraft(Model.setBinding(root.draft, root.table, slot, root.original[root.table][slot]), true)
   }
 
   function saveNow() {
@@ -299,6 +312,11 @@ Item {
     })
   }
 
+  function switchView(step) {
+    if (root.views.length < 2) return
+    root.viewIndex = (root.viewIndex + step + root.views.length) % root.views.length
+  }
+
   function hoverSlot(slot, hovered) {
     if (hovered) root.hoveredSlot = slot
     else if (root.hoveredSlot === slot) root.hoveredSlot = -1
@@ -351,7 +369,7 @@ Item {
   }
 
   // Reads sysfs and the cache, never the device. Without a picture the buttons are
-  // shown as cards alone.
+  // shown as labels alone.
   OmalogiCommand {
     id: pictureCommand
     onFinished: function(exitCode, stdout, stderr) {
@@ -390,6 +408,50 @@ Item {
     elide: Text.ElideRight
     font.family: Style.font.menuFamily
     font.pixelSize: Style.font.body
+  }
+
+  // A page in the icon rail.
+  component RailButton: Rectangle {
+    id: railButton
+    property string icon: ""
+    property string label: ""
+    property bool selected: false
+    signal activated()
+
+    width: root.railWidth - Style.spacing.sm
+    height: width
+    radius: Style.cornerRadius
+    color: selected ? Util.alpha(Color.accent, 0.18) : (railArea.containsMouse ? Util.alpha(Color.menu.text, 0.08) : "transparent")
+
+    Rectangle {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      width: Math.max(2, Style.space(3))
+      height: parent.height * 0.5
+      radius: width / 2
+      visible: railButton.selected
+      color: Color.accent
+    }
+
+    Icon {
+      anchors.centerIn: parent
+      name: railButton.icon
+      tint: railButton.selected ? Color.accent : Color.menu.text
+      size: Style.space(22)
+    }
+
+    MouseArea {
+      id: railArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: railButton.activated()
+    }
+
+    PanelToolTip {
+      visible: railArea.containsMouse
+      text: railButton.label
+    }
   }
 
   PanelWindow {
@@ -447,11 +509,15 @@ Item {
             root.selectProfile(root.cursor + 1)
           } else if (event.key === Qt.Key_Up || event.text === "k") {
             root.selectProfile(root.cursor - 1)
+          } else if (event.key === Qt.Key_Left || event.text === "h") {
+            root.switchView(-1)
+          } else if (event.key === Qt.Key_Right || event.text === "l") {
+            root.switchView(1)
+          } else if (event.text === "g") {
+            root.tab = root.tab === "gshift" ? "buttons" : "gshift"
           } else if (event.text === "1") {
-            root.tab = "buttons"
+            if (!root.assignments) root.tab = "buttons"
           } else if (event.text === "2") {
-            root.tab = "gshift"
-          } else if (event.text === "3") {
             root.tab = "sensitivity"
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.activate()
@@ -471,7 +537,7 @@ Item {
         anchors.bottomMargin: card.contentBottomInset
         anchors.leftMargin: card.contentLeftInset
 
-        // ---- Header -----------------------------------------------------
+        // ---- Header: brand, profile, activation, device ---------------------
         Item {
           id: header
           anchors.left: parent.left
@@ -479,26 +545,64 @@ Item {
           anchors.top: parent.top
           height: root.headerHeight
 
-          Label {
-            id: brand
+          Row {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Omalogi"
-            font.pixelSize: Style.font.heading
-            font.bold: true
+            spacing: Style.spacing.lg
+
+            Label {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Omalogi"
+              font.pixelSize: Style.font.heading
+              font.bold: true
+            }
+
+            Dropdown {
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(260)
+              showLabel: false
+              visible: root.ready
+              options: root.profileOptions
+              value: String(root.cursor)
+              fontFamily: Style.font.menuFamily
+              onChanged: function(value) { root.selectProfile(Number(value)) }
+            }
+
+            Button {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: root.ready
+              text: root.selected && root.selected.active ? "In use" : "Activate"
+              bordered: true
+              enabled: root.selected !== null && root.selected.enabled && !root.selected.active
+              opacity: enabled ? 1 : 0.5
+              foreground: Color.menu.text
+              fontFamily: Style.font.menuFamily
+              onClicked: root.activate()
+            }
+
+            Label {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: root.ready
+              opacity: 0.55
+              text: {
+                if (!root.selected) return ""
+                var note = Model.daemonNote(root.daemon, root.selected)
+                return note !== "" ? note : (root.selected.active ? "" : Model.profileStatus(root.selected))
+              }
+              font.pixelSize: Style.font.caption
+            }
           }
 
           Label {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, parent.width - brand.width - Style.spacing.panelGap)
             horizontalAlignment: Text.AlignRight
-            opacity: 0.6
+            opacity: 0.55
             text: root.info ? Model.deviceSummary(root.info) : ""
           }
         }
 
-        // ---- Footer: save status and Undo -------------------------------
+        // ---- Footer: save status and Undo ------------------------------------
         Item {
           id: footer
           anchors.left: parent.left
@@ -545,8 +649,10 @@ Item {
 
             Label {
               anchors.verticalCenter: parent.verticalCenter
-              opacity: 0.55
-              text: "↑↓ profile    1 2 3 view    ⏎ activate    ctrl+z undo    esc close"
+              opacity: 0.5
+              text: root.assignments
+                ? "←→ view    g G-Shift    ↑↓ profile    ctrl+z undo    esc close"
+                : "1 assignments    ↑↓ profile    ctrl+z undo    esc close"
               font.pixelSize: Style.font.caption
             }
 
@@ -564,7 +670,7 @@ Item {
           }
         }
 
-        // ---- Workspace --------------------------------------------------
+        // ---- Workspace ----------------------------------------------------------
         Item {
           id: workspace
           anchors.left: parent.left
@@ -606,193 +712,160 @@ Item {
           }
 
           Item {
+            id: pages
             anchors.fill: parent
             visible: root.ready && root.loadError === ""
 
-            // Profiles.
+            // Pages.
             Column {
               id: rail
               width: root.railWidth
               anchors.top: parent.top
-              spacing: Style.spacing.xs
+              spacing: Style.spacing.sm
 
-              PanelSectionHeader {
-                text: "Profiles"
-                foreground: Color.menu.text
+              RailButton {
+                icon: "mouse-pointer-click"
+                label: "Assignments"
+                selected: root.assignments
+                onActivated: if (!root.assignments) root.tab = "buttons"
               }
 
-              Repeater {
-                model: root.profiles
-
-                delegate: Button {
-                  required property var modelData
-                  required property int index
-                  width: rail.width
-                  leftAlign: true
-                  iconText: modelData.active ? "󰄬" : ""
-                  text: Model.profileTitle(modelData) + (!modelData.enabled ? "  (off)" : "")
-                  selected: index === root.cursor
-                  active: modelData.active
-                  opacity: modelData.enabled ? 1 : 0.6
-                  foreground: Color.menu.text
-                  fontFamily: Style.font.menuFamily
-                  onClicked: root.selectProfile(index)
-                }
-              }
-
-              Label {
-                width: rail.width
-                visible: root.anyDisabled
-                topPadding: Style.spacing.md
-                wrapMode: Text.Wrap
-                opacity: 0.5
-                text: "Profiles marked off are turned off on the mouse. You can still edit them."
-                font.pixelSize: Style.font.caption
+              RailButton {
+                icon: "gauge"
+                label: "Sensitivity"
+                selected: !root.assignments
+                onActivated: root.tab = "sensitivity"
               }
             }
 
             Rectangle {
               id: railDivider
               anchors.left: rail.right
-              anchors.leftMargin: Style.spacing.lg
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               width: Style.normalBorderWidth
               color: Util.alpha(Color.menu.border, 0.28)
             }
 
+            // Assignments: the library, and the mouse.
             Item {
-              id: stageArea
               anchors.left: railDivider.right
               anchors.leftMargin: Style.spacing.lg
               anchors.right: parent.right
               anchors.top: parent.top
               anchors.bottom: parent.bottom
+              visible: root.assignments
 
-              // Profile title, views and activation.
-              Item {
-                id: toolbar
+              ActionLibrary {
+                id: library
+                width: root.libraryWidth
                 anchors.left: parent.left
-                anchors.right: parent.right
                 anchors.top: parent.top
-                height: Math.max(titleColumn.height, toolbarActions.height)
-
-                Column {
-                  id: titleColumn
-                  anchors.left: parent.left
-                  anchors.right: toolbarActions.left
-                  anchors.rightMargin: Style.spacing.lg
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.spacing.xxs
-
-                  Label {
-                    width: parent.width
-                    text: root.selected ? Model.profileTitle(root.selected) : ""
-                    font.pixelSize: Style.font.heading
-                    font.bold: true
-                  }
-
-                  Label {
-                    width: parent.width
-                    opacity: 0.6
-                    text: {
-                      if (!root.selected) return ""
-                      var note = Model.daemonNote(root.daemon, root.selected)
-                      return Model.profileStatus(root.selected) + (note !== "" ? "  ·  " + note : "")
-                    }
-                  }
-                }
-
-                Row {
-                  id: toolbarActions
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.spacing.lg
-
-                  ButtonGroup {
-                    anchors.verticalCenter: parent.verticalCenter
-                    options: [
-                      { value: "buttons", label: "Buttons" },
-                      { value: "gshift", label: "G-Shift" },
-                      { value: "sensitivity", label: "Sensitivity" }
-                    ]
-                    value: root.tab
-                    foreground: Color.menu.text
-                    fontFamily: Style.font.menuFamily
-                    onChanged: function(value) { root.tab = value }
-                  }
-
-                  Button {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Activate"
-                    bordered: true
-                    enabled: root.selected !== null && root.selected.enabled && !root.selected.active
-                    opacity: enabled ? 1 : 0.4
-                    foreground: Color.menu.text
-                    fontFamily: Style.font.menuFamily
-                    onClicked: root.activate()
-                  }
-                }
+                anchors.bottom: parent.bottom
+                catalog: root.catalog
+                entries: root.entries
+                entry: root.selectedEntry
+                layerName: root.table === "gshift" ? "G-Shift layer" : "Default layer"
+                dragProxy: dragProxy
+                onChosen: function(action) { root.assign(root.selectedSlot, action) }
+                onShortcutRecorded: function(slot, action) { root.assign(slot, action) }
+                onSelectionNeeded: root.say("Select a button on the mouse first, or drag the action onto one.", false)
+                onRecordingChanged: if (!recording) keyCatcher.forceActiveFocus()
               }
 
-              Item {
-                id: content
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: toolbar.bottom
-                anchors.topMargin: Style.spacing.xxl
+              Rectangle {
+                id: libraryDivider
+                anchors.left: library.right
+                anchors.leftMargin: Style.spacing.lg
+                anchors.top: parent.top
                 anchors.bottom: parent.bottom
+                width: Style.normalBorderWidth
+                color: Util.alpha(Color.menu.border, 0.28)
+              }
 
-                DeviceCanvas {
-                  anchors.left: parent.left
-                  anchors.right: inspectorDivider.left
-                  anchors.rightMargin: Style.spacing.lg
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  visible: root.tab !== "sensitivity"
-                  views: root.views
-                  entries: root.entries
-                  selectedSlot: root.selectedSlot
-                  hoveredSlot: root.hoveredSlot
-                  onSlotSelected: function(slot) {
-                    root.selectedSlot = slot
-                    keyCatcher.forceActiveFocus()
-                  }
-                  onSlotHovered: function(slot, hovered) { root.hoverSlot(slot, hovered) }
+              DeviceCanvas {
+                anchors.left: libraryDivider.right
+                anchors.leftMargin: Style.spacing.lg
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                views: root.views
+                viewIndex: root.viewIndex
+                entries: root.entries
+                catalog: root.catalog
+                factory: root.onboard ? root.onboard.factory : null
+                table: root.table
+                selectedSlot: root.selectedSlot
+                hoveredSlot: root.hoveredSlot
+                onSlotSelected: function(slot) {
+                  root.selectedSlot = slot
+                  keyCatcher.forceActiveFocus()
+                }
+                onSlotHovered: function(slot, hovered) { root.hoverSlot(slot, hovered) }
+                onViewRequested: function(index) { root.viewIndex = index }
+                onLayerRequested: function(gshift) { root.tab = gshift ? "gshift" : "buttons" }
+                onActionAssigned: function(slot, action) { root.assign(slot, action) }
+                onRecordRequested: function(slot) { library.startRecording(slot) }
+                onRevertRequested: function(slot) { root.revertSlot(slot) }
+              }
+            }
+
+            SensitivityPanel {
+              anchors.left: railDivider.right
+              anchors.leftMargin: Style.space(40)
+              anchors.top: parent.top
+              anchors.topMargin: Style.spacing.md
+              anchors.bottom: parent.bottom
+              width: Math.min(parent.width - root.railWidth - Style.space(80), Style.space(1000))
+              visible: !root.assignments
+              draft: root.draft
+              bounds: Model.dpiBounds(root.info)
+              rates: root.info && root.info.report_rates_hz ? root.info.report_rates_hz : []
+              onEdited: function(next, immediate) { root.updateDraft(next, immediate) }
+            }
+
+            // Follows the pointer while an action is dragged from the library.
+            Rectangle {
+              id: dragProxy
+              property string action: ""
+              property string label: ""
+              property bool dragging: false
+
+              function prepare(row, x, y) {
+                dragProxy.action = row.value
+                dragProxy.label = row.label
+                dragProxy.x = x - dragProxy.width / 2
+                dragProxy.y = y - dragProxy.height / 2
+              }
+
+              visible: dragging
+              z: 100
+              width: dragRow.implicitWidth + Style.spacing.md * 2
+              height: Style.space(36)
+              radius: Style.cornerRadius
+              color: Color.menu.background
+              border.width: Math.max(2, Style.normalBorderWidth)
+              border.color: Color.accent
+              Drag.active: dragging
+              Drag.keys: ["omalogi-action"]
+              Drag.hotSpot.x: width / 2
+              Drag.hotSpot.y: height / 2
+
+              Row {
+                id: dragRow
+                anchors.centerIn: parent
+                spacing: Style.spacing.sm
+
+                Icon {
+                  anchors.verticalCenter: parent.verticalCenter
+                  name: Model.actionIcon(dragProxy.action)
+                  tint: Color.accent
+                  size: Style.space(18)
                 }
 
-                Rectangle {
-                  id: inspectorDivider
-                  anchors.right: inspector.left
-                  anchors.rightMargin: Style.spacing.lg
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  width: Style.normalBorderWidth
-                  visible: root.tab !== "sensitivity"
-                  color: Util.alpha(Color.menu.border, 0.28)
-                }
-
-                ActionInspector {
-                  id: inspector
-                  anchors.right: parent.right
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  width: root.inspectorWidth
-                  visible: root.tab !== "sensitivity"
-                  entry: root.selectedEntry
-                  catalog: root.catalog
-                  onChosen: function(action) { root.choose(action) }
-                  onReverted: root.revertSlot()
-                  onRecordingChanged: if (!recording) keyCatcher.forceActiveFocus()
-                }
-
-                SensitivityPanel {
-                  anchors.fill: parent
-                  visible: root.tab === "sensitivity"
-                  draft: root.draft
-                  bounds: Model.dpiBounds(root.info)
-                  rates: root.info && root.info.report_rates_hz ? root.info.report_rates_hz : []
-                  onEdited: function(next, immediate) { root.updateDraft(next, immediate) }
+                Label {
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: dragProxy.label
                 }
               }
             }

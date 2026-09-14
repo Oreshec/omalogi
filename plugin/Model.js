@@ -387,6 +387,13 @@ function actionSections(catalog, query) {
   return sections
 }
 
+// Names of the buttons whose binding is `action` (keyboard shortcuts count as one action).
+function assignedNames(entries, action) {
+  return (entries || [])
+    .filter(function(entry) { return actionChoice(entry.action) === action })
+    .map(function(entry) { return entry.name })
+}
+
 // The catalog's groups in display order.
 function actionGroups(catalog) {
   return actionSections(catalog, "").map(function(section) { return section.group })
