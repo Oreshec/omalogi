@@ -85,6 +85,17 @@ async fn reads_onboard_profiles() {
 }
 
 #[tokio::test]
+async fn reads_the_factory_profile_bindings() {
+    let (mut session, _, _) = connect().await;
+    let state = session.onboard().await.expect("onboard state");
+
+    let factory = state.factory.expect("the G502 X has factory profiles");
+    assert_eq!(factory.buttons.len(), 16);
+    assert_eq!(factory.gshift_buttons.len(), 16);
+    assert_eq!(factory.buttons[0].as_deref(), Some("left"));
+}
+
+#[tokio::test]
 async fn backup_contains_every_listed_sector() {
     let (mut session, _, _) = connect().await;
     let backup = session.backup().await.expect("backup");

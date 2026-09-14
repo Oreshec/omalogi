@@ -140,6 +140,9 @@ pub struct OnboardState {
     pub description: Description,
     pub active_position: Option<usize>,
     pub profiles: Vec<ProfileSlot>,
+    /// The bindings of the mouse's first factory (ROM) profile: what "use default" puts
+    /// back. `None` when the mouse has no factory profile.
+    pub factory: Option<BindingActions>,
 }
 
 /// Onboard profile memory as read from the device, for restoring later.
@@ -315,11 +318,13 @@ impl Session {
             )?);
         }
 
+        let factory = factory_actions(&feature, &description).await?;
         Ok(OnboardState {
             mode,
             description,
             active_position,
             profiles,
+            factory,
         })
     }
 
@@ -497,6 +502,38 @@ fn profile_slot_from(
         },
         profile,
     })
+}
+
+/// The bindings of the first factory profile. Factory sectors carry no checksum, so they
+/// are parsed as read; nothing is ever written there.
+async fn factory_actions(
+    feature: &OnboardProfilesFeature,
+    description: &Description,
+) -> Result<Option<BindingActions>, SessionError> {
+    if description.rom_profile_count == 0 {
+        return Ok(None);
+    }
+    let directory = feature
+        .read_sector(format::ROM_DIRECTORY_SECTOR, description.sector_size)
+        .await?;
+    let Some(entry) = format::parse_directory(&directory, description.rom_profile_count.into())
+        .first()
+        .copied()
+    else {
+        return Ok(None);
+    };
+    let sector = feature
+        .read_sector(entry.sector, description.sector_size)
+        .await?;
+    let profile = Profile::parse(&sector, description).map_err(OnboardError::from)?;
+    Ok(Some(BindingActions {
+        buttons: profile.buttons.iter().map(action::action_text).collect(),
+        gshift_buttons: profile
+            .gshift_buttons
+            .iter()
+            .map(action::action_text)
+            .collect(),
+    }))
 }
 
 fn labels_for(bindings: &[Binding]) -> Vec<Option<String>> {

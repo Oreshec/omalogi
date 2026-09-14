@@ -463,6 +463,26 @@ function changeCount(draft, original) {
   return count
 }
 
+// The index of the picture view that shows `slot`, or -1.
+function viewForSlot(views, slot) {
+  var found = -1
+  ;(views || []).forEach(function(view, index) {
+    if (found !== -1) return
+    if ((view.hotspots || []).some(function(hotspot) { return hotspot.slot === slot })) found = index
+  })
+  return found
+}
+
+// What "use default" puts back for `slot` in `table`: the mouse's factory binding, or
+// null when the factory profile is unknown.
+function factoryAction(onboard, table, slot) {
+  var factory = onboard && onboard.factory
+  if (!factory) return null
+  var list = table === "gshift" ? factory.gshift_buttons : factory.buttons
+  var action = list ? list[slot] : undefined
+  return action === undefined ? null : action
+}
+
 // Entries by slot number.
 function indexBySlot(entries) {
   var index = {}

@@ -250,6 +250,23 @@ test("canvas helpers index entries and find the ones without a position", () => 
   assert.deepEqual(plain(Model.entriesWithoutHotspot(entries, [])), entries)
 })
 
+test("viewForSlot finds the view that shows a button", () => {
+  const views = [{ hotspots: [{ slot: 0 }, { slot: 9 }] }, { hotspots: [{ slot: 3 }] }]
+  assert.equal(Model.viewForSlot(views, 9), 0)
+  assert.equal(Model.viewForSlot(views, 3), 1)
+  assert.equal(Model.viewForSlot(views, 11), -1)
+  assert.equal(Model.viewForSlot(null, 0), -1)
+})
+
+test("factoryAction reads what use default puts back", () => {
+  const onboard = { factory: { buttons: ["left", "right", null], gshift_buttons: ["disabled"] } }
+  assert.equal(Model.factoryAction(onboard, "buttons", 1), "right")
+  assert.equal(Model.factoryAction(onboard, "buttons", 2), null)
+  assert.equal(Model.factoryAction(onboard, "buttons", 20), null)
+  assert.equal(Model.factoryAction(onboard, "gshift", 0), "disabled")
+  assert.equal(Model.factoryAction({ factory: null }, "buttons", 0), null)
+})
+
 test("fitPictureHeight fits the width within bounds", () => {
   const views = [{ width: 1000, height: 2000 }, { width: 500, height: 2000 }]
   // Aspect ratios add up to 0.75, so 300 px of width holds a 400 px tall picture.
