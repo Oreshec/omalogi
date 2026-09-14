@@ -95,6 +95,9 @@ enum DeviceCommand {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
+    /// Accept editing a mouse Omalogi has not been tested on yet. Every write is still
+    /// backed up and verified; please report how it went.
+    AcceptUntested,
     /// Show the sensor's live DPI, or set it without saving it to any profile.
     Dpi {
         /// The DPI to use right now, e.g. 1600.
@@ -427,6 +430,21 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
                     .await?;
                 output(json, &report, || text::write_report(&report))?;
             }
+        }
+        DeviceCommand::AcceptUntested => {
+            let support = session.accept_untested().await?;
+            output(json, &support, || {
+                if support.verified {
+                    format!("The {} is verified; it needs no acceptance\n", support.name)
+                } else {
+                    format!(
+                        "You can now edit the {}. It has not been tested with Omalogi, so every \
+                         write is backed up first and read back to verify it.\nTell us how it \
+                         went: https://github.com/elberacasa/omalogi/issues/new?template=device.yml\n",
+                        support.name
+                    )
+                }
+            })?;
         }
         DeviceCommand::Dpi { value } => {
             let dpi = match value {

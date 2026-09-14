@@ -19,6 +19,12 @@ pub const READ_CHUNK: usize = 16;
 /// `(1, 4)`: wired G502 X (046d:c099), firmware U1 60.00.B0009.
 pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 4)];
 
+/// `(memory model, profile format)` pairs Omalogi reads and edits. libratbag lays out all
+/// five formats with one struct (`union hidpp20_internal_profile`): report rate, DPI
+/// stages, both button tables and the name share their offsets, and only LED fields
+/// differ, which Omalogi never changes. Layouts outside [`VERIFIED_LAYOUTS`] are untested.
+pub const DECODABLE_LAYOUTS: &[(u8, u8)] = &[(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)];
+
 const DESCRIPTION_LEN: usize = 11;
 const DIRECTORY_END: u16 = 0xFFFF;
 pub(crate) const DIRECTORY_ENTRY_LEN: usize = 4;
@@ -41,9 +47,9 @@ pub enum DecodeError {
     UnsupportedSectorSize(u16),
     #[error(
         "profile layout (memory model {memory_model}, format {profile_format}) \
-         has not been verified on hardware"
+         is not one Omalogi can read"
     )]
-    UnverifiedLayout {
+    UnsupportedLayout {
         memory_model: u8,
         profile_format: u8,
     },
@@ -99,6 +105,12 @@ impl Description {
     #[must_use]
     pub fn is_verified(&self) -> bool {
         VERIFIED_LAYOUTS.contains(&(self.memory_model, self.profile_format))
+    }
+
+    /// Whether Omalogi can read and edit this device's profile layout.
+    #[must_use]
+    pub fn is_decodable(&self) -> bool {
+        DECODABLE_LAYOUTS.contains(&(self.memory_model, self.profile_format))
     }
 }
 
@@ -285,8 +297,8 @@ pub struct Profile {
 
 impl Profile {
     pub fn parse(sector: &[u8], description: &Description) -> Result<Self, DecodeError> {
-        if !description.is_verified() {
-            return Err(DecodeError::UnverifiedLayout {
+        if !description.is_decodable() {
+            return Err(DecodeError::UnsupportedLayout {
                 memory_model: description.memory_model,
                 profile_format: description.profile_format,
             });
@@ -486,14 +498,18 @@ mod tests {
     }
 
     #[test]
-    fn refuses_unverified_layouts() {
+    fn reads_every_libratbag_layout_but_refuses_others() {
         let mut d = description();
         d.profile_format = 5;
+        assert!(!d.is_verified());
+        assert!(d.is_decodable());
+        assert!(Profile::parse(&sector("0001"), &d).is_ok());
+        d.profile_format = 6;
         assert_eq!(
             Profile::parse(&sector("0001"), &d),
-            Err(DecodeError::UnverifiedLayout {
+            Err(DecodeError::UnsupportedLayout {
                 memory_model: 1,
-                profile_format: 5
+                profile_format: 6
             })
         );
     }

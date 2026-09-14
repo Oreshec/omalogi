@@ -162,6 +162,8 @@ pub struct Session {
     device: Device,
     model: SupportedDevice,
     path: String,
+    /// Where acceptances to edit untested mice are kept (see [`crate::consent`]).
+    consent: Option<std::path::PathBuf>,
 }
 
 impl Session {
@@ -173,7 +175,18 @@ impl Session {
         let path = node.path.display().to_string();
         let model = node.device;
         let raw = HidrawChannel::open(node)?;
-        Self::connect(raw, model, path, software_id).await
+        let mut session = Self::connect(raw, model, path, software_id).await?;
+        session.consent = crate::consent::default_path();
+        Ok(session)
+    }
+
+    /// Where acceptances to edit untested mice are read and recorded; `None` refuses them.
+    pub fn set_consent_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.consent = path;
+    }
+
+    pub(crate) fn consent_path(&self) -> Option<&std::path::Path> {
+        self.consent.as_deref()
     }
 
     /// Starts a session over any HID++ transport, such as an emulated device in tests.
@@ -199,6 +212,7 @@ impl Session {
             device,
             model,
             path,
+            consent: None,
         })
     }
 

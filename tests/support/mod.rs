@@ -80,6 +80,7 @@ struct Fixture {
 
 pub struct FakeG502x {
     fixture: Fixture,
+    product_id: u16,
     state: Arc<Mutex<State>>,
     responses: mpsc::UnboundedSender<Vec<u8>>,
     reports: AsyncMutex<mpsc::UnboundedReceiver<Vec<u8>>>,
@@ -151,10 +152,25 @@ impl FakeG502x {
         let (responses, reports) = mpsc::unbounded_channel();
         Self {
             fixture,
+            product_id: 0xC099,
             state: Arc::new(Mutex::new(state)),
             responses,
             reports: AsyncMutex::new(reports),
         }
+    }
+
+    /// The same emulated mouse under another USB product id, as an untested model.
+    #[allow(dead_code)]
+    pub fn with_product_id(mut self, product_id: u16) -> Self {
+        self.product_id = product_id;
+        self
+    }
+
+    /// The same memory, reported under another onboard profile format.
+    #[allow(dead_code)]
+    pub fn with_profile_format(mut self, profile_format: u8) -> Self {
+        self.fixture.description[1] = profile_format;
+        self
     }
 
     pub fn state(&self) -> Arc<Mutex<State>> {
@@ -325,7 +341,7 @@ impl RawHidChannel for FakeG502x {
     }
 
     fn product_id(&self) -> u16 {
-        0xC099
+        self.product_id
     }
 
     async fn write_report(&self, src: &[u8]) -> Result<usize, BoxError> {

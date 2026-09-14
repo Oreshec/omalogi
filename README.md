@@ -15,11 +15,32 @@ mouse's profile memory before every write, and reads every write back to verify 
 
 | Device | USB id | Status |
 |---|---|---|
-| Logitech G502 X (wired) | 046d:c099 | Tested on real hardware (firmware U1 60.00.B0009) |
+| Logitech G502 X (wired) | 046d:c099 | **Verified** on real hardware (firmware U1 60.00.B0009) |
+| Other wired G-series mice with onboard profiles | see below | **Untested** |
 
-Other G-series mice are not supported yet. Onboard profile layouts differ between
-models, and Omalogi only decodes and writes layouts that were verified on a real
-device (see [CONTRIBUTING.md](CONTRIBUTING.md) to add one).
+Untested mice use the same onboard memory family as the G502 X, which libratbag reads and
+writes with one layout, so Omalogi can read and edit them. Nobody has checked them with
+Omalogi yet, though: the first time you edit one, Omalogi asks you to accept that
+(`omalogi accept-untested`, or a button in the overlay). Every write is still backed up,
+read back and verified. Then please use **Report how it went** in the overlay, so the
+model can become verified.
+
+<details>
+<summary>Untested wired models</summary>
+
+G102/G203 (c084, c092, c09d), G302 (c07f), G303 (c080), G303 Shroud Edition (c097),
+G402 (c07e), G403 (c083), G403 Hero (c08f), G403 Wireless (c082), G502 Hero (c08b),
+G502 Hero Wireless (c08d), G502 Proteus Core (c07d), G502 Proteus Spectrum (c332),
+G502 X Lightspeed (c098), G502 X Plus (c095), G703 (c087), G703 Hero (c090), G705 (c096),
+G900 (c081), G903 (c086), G903 Hero (c091), G Pro (c085, c08c), G Pro Wireless (c088),
+G Pro X Superlight (c094), MX518 (c08e). Wireless models are listed with their USB id
+for a cable connection; receivers are not supported yet.
+
+</details>
+
+Mice without onboard profiles, such as the MX series, are not supported: for those,
+see [OpenLogi](https://github.com/AprilNEA/OpenLogi). To help verify a mouse, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Features
 

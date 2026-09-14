@@ -97,6 +97,19 @@ pub enum EditError {
     #[error("the data for profile {number} is not a valid profile for this mouse")]
     InvalidProfileSector { number: usize },
     #[error(
+        "the {name} has not been tested with Omalogi yet; run `omalogi accept-untested` or \
+         accept it in the overlay to edit it (every write is still backed up and verified)"
+    )]
+    NotAccepted { name: &'static str },
+    #[error("could not record the acceptance in {path}")]
+    SaveConsent {
+        path: String,
+        #[source]
+        source: io::Error,
+    },
+    #[error("there is no state directory to record the acceptance in; set XDG_STATE_HOME")]
+    NoStateDirectory,
+    #[error(
         "the change was written and verified, but the mouse is left on profile {current}: \
          switching back to profile {profile} to load it failed"
     )]
@@ -439,6 +452,7 @@ impl Session {
         backup_path: &Path,
     ) -> Result<WriteReport, EditError> {
         let plan = self.plan_profile_changes(number, changes).await?;
+        self.ensure_writes_accepted().await?;
         let backup = self.backup().await?;
         save_backup(&backup, backup_path)?;
         let takes_effect = self.write_plan(&plan).await?;
@@ -452,6 +466,7 @@ impl Session {
     /// Writes a plan from [`Session::plan_profile_changes`], verifies it, and loads it
     /// when it changed the active profile. The caller makes sure a backup exists first.
     pub async fn write_plan(&mut self, plan: &EditPlan) -> Result<TakesEffect, EditError> {
+        self.ensure_writes_accepted().await?;
         let feature = self.onboard_feature().await?;
         write_verified(&feature, plan.sector, &plan.edited, &plan.previous).await?;
         self.load_written(&[plan.sector]).await
@@ -464,6 +479,7 @@ impl Session {
         number: usize,
         data: &[u8],
     ) -> Result<TakesEffect, EditError> {
+        self.ensure_writes_accepted().await?;
         let feature = self.onboard_feature().await?;
         let description = feature.description().await?;
         let entries = read_directory(&feature, &description).await?;
@@ -580,6 +596,7 @@ impl Session {
         enabled: bool,
     ) -> Result<(), EditError> {
         let (previous, edited) = self.plan_enabled(number, enabled).await?;
+        self.ensure_writes_accepted().await?;
         let feature = self.onboard_feature().await?;
         write_verified(&feature, format::USER_DIRECTORY_SECTOR, &edited, &previous).await
     }

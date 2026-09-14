@@ -40,7 +40,9 @@ pub const SOFTWARE_ID: u8 = 0x0D;
 
 /// The version of this request format. The plugin, installed and updated on its own with
 /// `omarchy plugin add`, asks for a helper update when this is older than it needs.
-pub const PROTOCOL: u32 = 1;
+///
+/// 2: `state` reports `support`, and `accept_untested` accepts editing an untested mouse.
+pub const PROTOCOL: u32 = 2;
 
 /// Where to save a backup for a device name.
 pub type BackupPath = fn(&str) -> Result<PathBuf, Box<dyn Error>>;
@@ -72,6 +74,8 @@ enum Command {
         profile: usize,
         enabled: bool,
     },
+    /// Accepts editing an untested mouse from now on; answers with its support.
+    AcceptUntested,
 }
 
 /// The changes `profiles edit` takes, as JSON. Slots are keys: `{"3": "key:ctrl+t"}`.
@@ -189,9 +193,11 @@ impl Server {
             Command::State => {
                 let info = self.session.info().await.map_err(|e| error_chain(&e))?;
                 let onboard = self.session.onboard().await.map_err(|e| error_chain(&e))?;
+                let support = self.session.support().await.map_err(|e| error_chain(&e))?;
                 Ok(json!({
                     "info": info,
                     "onboard": onboard,
+                    "support": support,
                     "helper": { "version": env!("CARGO_PKG_VERSION"), "protocol": PROTOCOL },
                 }))
             }
@@ -213,6 +219,14 @@ impl Server {
                 .set_enabled(profile, enabled)
                 .await
                 .map_err(|e| error_chain(e.as_ref())),
+            Command::AcceptUntested => {
+                let support = self
+                    .session
+                    .accept_untested()
+                    .await
+                    .map_err(|e| error_chain(&e))?;
+                Ok(json!({ "support": support }))
+            }
         }
     }
 

@@ -58,6 +58,52 @@ function setupState(message) {
   return "error"
 }
 
+// The connected mouse's support, from a `state` answer. Helpers before protocol 2 only
+// opened the verified G502 X, so no report means that.
+function support(state) {
+  if (state && state.support) return state.support
+  return { name: "G502 X", verified: true, editable: true, accepted: true }
+}
+
+// The header badge for a mouse that is not verified, or null.
+function supportBadge(support) {
+  if (!support || support.verified) return null
+  if (!support.editable) {
+    return {
+      text: "Not supported yet",
+      detail: "Omalogi cannot read this mouse's profile layout (format " + support.profile_format + ") yet."
+    }
+  }
+  return {
+    text: "Untested",
+    detail: "Omalogi has not been tested on the " + support.name + " yet. Every change is backed up and verified."
+  }
+}
+
+// Whether saving must first ask the user to accept editing an untested mouse.
+function needsAcceptance(support) {
+  return !!support && !support.verified && !!support.editable && !support.accepted
+}
+
+function hex4(value) {
+  return ("0000" + Number(value || 0).toString(16)).slice(-4)
+}
+
+// The new-device issue form, prefilled with the model and USB id only: never the unit ID,
+// firmware serials or backups.
+function reportUrl(info, support) {
+  var name = support && support.name ? support.name : (info && info.name) || "Logitech mouse"
+  var fields = {
+    template: "device.yml",
+    title: "[Device]: " + name,
+    model: "Logitech " + name,
+    usb: hex4(info && info.vendor_id) + ":" + hex4(info && info.product_id)
+  }
+  return "https://github.com/elberacasa/omalogi/issues/new?" + Object.keys(fields).map(function(key) {
+    return key + "=" + encodeURIComponent(fields[key])
+  }).join("&")
+}
+
 // Whether the helper is older than this plugin needs. Helpers before the protocol was
 // reported speak protocol 1.
 function helperOutdated(state) {

@@ -29,6 +29,20 @@ body:
         - Bluetooth
     validations:
       required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      description: "The firmware line from `omalogi info`, e.g. U1 60.00.B0009."
+  - type: textarea
+    id: results
+    attributes:
+      label: How did it go?
+      description: For an untested mouse Omalogi already opens, what worked, what did not, and any error messages. Do not attach backups; they contain the mouse's unit ID.
+      placeholder: |
+        Reading profiles: …
+        Changing DPI levels: …
+        Button assignments: …
   - type: checkboxes
     id: testing
     attributes:

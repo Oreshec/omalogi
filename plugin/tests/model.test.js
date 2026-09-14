@@ -623,3 +623,23 @@ test("the setup screen names the one step that reaches the mouse", () => {
   assert.doesNotMatch(Model.helperInstallCommand("/p/install.sh"), /curl|wget/, "never a download piped to a shell")
   assert.match(Model.PLUGIN_ADD_COMMAND, /^omarchy plugin add https:\/\/github\.com\/elberacasa\/omalogi --enable$/)
 })
+
+test("untested mice get a badge, one acceptance and a report link", () => {
+  assert.deepEqual(plain(Model.support({ info: {}, onboard: {} })), { name: "G502 X", verified: true, editable: true, accepted: true },
+    "helpers before protocol 2 only opened the verified G502 X")
+  const verified = { name: "G502 X", verified: true, editable: true, accepted: true, memory_model: 1, profile_format: 4 }
+  const untested = { name: "G502 Hero", verified: false, editable: true, accepted: false, memory_model: 1, profile_format: 4 }
+  const unreadable = { name: "G502 Hero", verified: false, editable: false, accepted: false, memory_model: 1, profile_format: 6 }
+  assert.equal(Model.support({ support: untested }), untested)
+  assert.equal(Model.supportBadge(verified), null)
+  assert.equal(Model.supportBadge(untested).text, "Untested")
+  assert.match(Model.supportBadge(untested).detail, /G502 Hero/)
+  assert.equal(Model.supportBadge(unreadable).text, "Not supported yet")
+  assert.equal(Model.needsAcceptance(verified), false)
+  assert.equal(Model.needsAcceptance(untested), true)
+  assert.equal(Model.needsAcceptance({ ...untested, accepted: true }), false)
+  assert.equal(Model.needsAcceptance(unreadable), false, "nothing to accept when it cannot be edited")
+  const url = Model.reportUrl({ name: "G502 Hero", vendor_id: 0x046d, product_id: 0xc08b }, untested)
+  assert.equal(url, "https://github.com/elberacasa/omalogi/issues/new?template=device.yml&title=%5BDevice%5D%3A%20G502%20Hero&model=Logitech%20G502%20Hero&usb=046d%3Ac08b")
+  assert.doesNotMatch(url, /unit|serial|backup/i)
+})

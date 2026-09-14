@@ -18,23 +18,72 @@ const HIDPP_USAGE_PAGE: u32 = 0xFF00;
 const SHORT_REPORT_ID: u32 = 0x10;
 const LONG_REPORT_ID: u32 = 0x11;
 
-/// A device Omalogi has been tested against on real hardware.
+/// A Logitech mouse Omalogi knows, wired over USB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SupportedDevice {
     pub vendor_id: u16,
     pub product_id: u16,
     pub name: &'static str,
+    /// Tested on real hardware; other models are edited only after the user accepts.
+    pub verified: bool,
 }
 
-pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[SupportedDevice {
-    vendor_id: 0x046D,
-    product_id: 0xC099,
-    name: "G502 X",
-}];
+const fn verified(product_id: u16, name: &'static str) -> SupportedDevice {
+    SupportedDevice {
+        vendor_id: 0x046D,
+        product_id,
+        name,
+        verified: true,
+    }
+}
+
+const fn untested(product_id: u16, name: &'static str) -> SupportedDevice {
+    SupportedDevice {
+        verified: false,
+        ..verified(product_id, name)
+    }
+}
+
+/// Wired G-series mice with HID++ 2.0 onboard profiles. The verified G502 X comes first;
+/// the untested models and their USB ids come from libratbag's device database
+/// (`data/devices/*.device`, MIT).
+pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[
+    verified(0xC099, "G502 X"),
+    untested(0xC07D, "G502 Proteus Core"),
+    untested(0xC07E, "G402"),
+    untested(0xC07F, "G302"),
+    untested(0xC080, "G303"),
+    untested(0xC081, "G900"),
+    untested(0xC082, "G403 Wireless"),
+    untested(0xC083, "G403"),
+    untested(0xC084, "G102/G203"),
+    untested(0xC085, "G Pro"),
+    untested(0xC086, "G903"),
+    untested(0xC087, "G703"),
+    untested(0xC088, "G Pro Wireless"),
+    untested(0xC08B, "G502 Hero"),
+    untested(0xC08C, "G Pro"),
+    untested(0xC08D, "G502 Hero Wireless"),
+    untested(0xC08E, "MX518"),
+    untested(0xC08F, "G403 Hero"),
+    untested(0xC090, "G703 Hero"),
+    untested(0xC091, "G903 Hero"),
+    untested(0xC092, "G102/G203"),
+    untested(0xC094, "G Pro X Superlight"),
+    untested(0xC095, "G502 X Plus"),
+    untested(0xC096, "G705"),
+    untested(0xC097, "G303 Shroud Edition"),
+    untested(0xC098, "G502 X Lightspeed"),
+    untested(0xC09D, "G102/G203"),
+    untested(0xC332, "G502 Proteus Spectrum"),
+];
 
 #[derive(Debug, Error)]
 pub enum HidrawError {
-    #[error("no supported Logitech device found; is the G502 X (046d:c099) plugged in over USB?")]
+    #[error(
+        "no supported Logitech mouse found; plug a G-series mouse in over USB \
+         (wireless receivers are not supported yet)"
+    )]
     NotFound,
     #[error(
         "permission denied opening {path}; install Omalogi's udev rule \
@@ -325,5 +374,41 @@ mod tests {
 
         assert_eq!(found.path, Path::new("/dev/hidraw8"));
         assert_eq!(found.device.product_id, 0xC099);
+        assert!(found.device.verified);
+    }
+
+    #[test]
+    fn finds_an_untested_known_mouse_but_not_unknown_devices() {
+        let root =
+            std::env::temp_dir().join(format!("omalogi-sysfs-untested-{}", std::process::id()));
+        for (node, uevent) in [
+            // A Lightspeed receiver: not a mouse Omalogi opens directly.
+            ("hidraw3", "HID_ID=0003:0000046D:0000C539\n"),
+            ("hidraw4", "HID_ID=0003:0000046D:0000C08B\n"),
+        ] {
+            let dir = root.join(node).join("device");
+            fs::create_dir_all(&dir).expect("create fake sysfs");
+            fs::write(dir.join("uevent"), uevent).expect("write uevent");
+            fs::write(dir.join("report_descriptor"), bytes(G502X_IFACE1))
+                .expect("write descriptor");
+        }
+
+        let found = find_supported_in(&root).expect("device found");
+        fs::remove_dir_all(&root).expect("clean up fake sysfs");
+
+        assert_eq!(found.path, Path::new("/dev/hidraw4"));
+        assert_eq!(found.device.name, "G502 Hero");
+        assert!(!found.device.verified);
+    }
+
+    #[test]
+    fn the_verified_mouse_is_listed_first_and_ids_are_unique() {
+        assert!(SUPPORTED_DEVICES[0].verified);
+        assert_eq!(SUPPORTED_DEVICES[0].product_id, 0xC099);
+        assert_eq!(SUPPORTED_DEVICES.iter().filter(|d| d.verified).count(), 1);
+        let mut ids: Vec<u16> = SUPPORTED_DEVICES.iter().map(|d| d.product_id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), SUPPORTED_DEVICES.len());
     }
 }

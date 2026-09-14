@@ -66,8 +66,8 @@ pub struct ProfileEditor {
 impl ProfileEditor {
     /// Starts from a sector as read from the device.
     pub fn new(sector: &[u8], description: &Description) -> Result<Self, DecodeError> {
-        if !description.is_verified() {
-            return Err(DecodeError::UnverifiedLayout {
+        if !description.is_decodable() {
+            return Err(DecodeError::UnsupportedLayout {
                 memory_model: description.memory_model,
                 profile_format: description.profile_format,
             });
@@ -333,13 +333,15 @@ mod tests {
     }
 
     #[test]
-    fn refuses_unverified_layouts() {
+    fn edits_every_libratbag_layout_but_refuses_others() {
         let mut description = description();
-        description.profile_format = 5;
         let sector = fixture_hex("/onboard/sectors/0001");
+        description.profile_format = 5;
+        assert!(ProfileEditor::new(&sector, &description).is_ok());
+        description.profile_format = 6;
         assert!(matches!(
             ProfileEditor::new(&sector, &description),
-            Err(DecodeError::UnverifiedLayout { .. })
+            Err(DecodeError::UnsupportedLayout { .. })
         ));
     }
 }

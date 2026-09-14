@@ -14,6 +14,12 @@ All notable changes are listed here. The project follows
   to a shell. `omarchy plugin update` keeps the plugin current: `omalogi setup` no
   longer writes into a plugin added this way, and `omalogi serve` reports the helper's
   version and protocol.
+- Untested mice: every wired G-series mouse libratbag lists with onboard profiles (27
+  models) is found and read. Omalogi reads and edits all five onboard profile formats
+  libratbag shares one layout for. Editing an untested mouse needs a one-time
+  acceptance per model and layout (`omalogi accept-untested`, or the overlay), and
+  every write is still backed up and verified; `omalogi serve` reports the mouse's
+  `support`. The udev rule covers the new models.
 - `AGENTS.md` and task prompts in `docs/agents/` so contributors can work with the coding
   agent of their choice under the same rules.
 

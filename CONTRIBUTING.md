@@ -52,9 +52,12 @@ new binary: `systemctl --user restart omalogi`.
 - **Read before write.** New write paths are proven against the emulated device first,
   then on hardware with a dry run, a backup and a restore, and logged in
   `docs/hardware-tests.md`.
-- **Verify layouts.** Profile decoding and editing are gated on
-  `VERIFIED_LAYOUTS` in `src/onboard/format.rs`. Only add a layout after checking its
-  profile sectors byte by byte against a real device.
+- **Readable is not verified.** Omalogi reads and edits the layouts in
+  `DECODABLE_LAYOUTS` (`src/onboard/format.rs`), which libratbag lays out identically.
+  A mouse is verified only when its model has `verified` in `SUPPORTED_DEVICES`
+  (`src/hidraw.rs`) and its layout is in `VERIFIED_LAYOUTS`; every other mouse needs the
+  user's one-time acceptance before a write. Mark a model verified only after its
+  profile sectors are checked byte by byte and the hardware tests pass on a real one.
 - **Never** write factory sectors or firmware.
 
 ## Adding a device

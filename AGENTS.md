@@ -52,8 +52,10 @@ the human when a task seems to need it.
 3. **Writes are proven on the emulator first**, then on hardware with a dry run, a
    backup and a restore. Only a human with the mouse can run hardware steps: ask them,
    give them the exact commands, and log the results in `docs/hardware-tests.md`.
-4. **Layouts are verified, not inferred.** Decoding and editing are gated on
-   `VERIFIED_LAYOUTS`; add one only after a byte-by-byte check against a real device.
+4. **Readable is not verified.** `DECODABLE_LAYOUTS` are the layouts Omalogi can edit;
+   a mouse counts as verified only with `verified` in `SUPPORTED_DEVICES` and its layout
+   in `VERIFIED_LAYOUTS`. Never mark either verified without a byte-by-byte check and the
+   hardware tests on a real device, and never bypass the untested-mouse acceptance.
 5. **Never commit device identity.** Raw dumps and backups contain the mouse's unit ID.
    Fixtures in `tests/fixtures/` have it zeroed in `device_info`; never commit a raw
    dump, a backup file, or a screenshot showing anything but Omalogi.

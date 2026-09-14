@@ -29,6 +29,11 @@ Item {
   property string loadError: ""
   // The helper answered but is older than this plugin needs.
   property bool helperOutdated: false
+  // How far the connected mouse is verified (Model.support); untested mice ask once
+  // before the first save.
+  property var support: null
+  property bool acceptOpen: false
+  readonly property var supportBadge: Model.supportBadge(root.support)
   // What stands between the plugin and the mouse (see Model.setupState), or "".
   readonly property string setupKind: root.helperOutdated ? "outdated" : Model.setupState(root.loadError)
   property string notice: ""
@@ -141,6 +146,7 @@ Item {
       }
       var first = root.onboard === null
       root.helperOutdated = Model.helperOutdated(result)
+      root.support = Model.support(result)
       root.info = result.info
       root.onboard = result.onboard
       if (first) root.cursor = Model.initialCursor(result.onboard)
@@ -222,6 +228,11 @@ Item {
     if (!root.draft || !root.original || !root.dirty) return false
     if (root.problem !== "") {
       root.say(root.problem, true)
+      return false
+    }
+    // An untested mouse is written only after the user accepts it, once.
+    if (Model.needsAcceptance(root.support)) {
+      root.acceptOpen = true
       return false
     }
     if (root.saving || root.undoing) {
@@ -346,6 +357,24 @@ Item {
   function installHelper() {
     Util.execArgv(Model.helperInstallArgv(root.installScript))
     root.say("Finish the installer in the terminal, then choose Try again.", false)
+  }
+
+  // Accepts editing this untested mouse, then saves the changes that were waiting.
+  function acceptUntested() {
+    root.acceptOpen = false
+    server.request({ cmd: "accept_untested" }, function(ok, result) {
+      if (!ok) {
+        root.say("Not saved: " + result, true)
+        return
+      }
+      root.support = result.support
+      root.save()
+    })
+  }
+
+  // Opens the new-device issue form, prefilled with the model and USB id.
+  function reportDevice() {
+    Qt.openUrlExternally(Model.reportUrl(root.info, root.support))
   }
 
   function daemonUpdated(state) {
@@ -623,12 +652,133 @@ Item {
             }
           }
 
-          Label {
+          Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            horizontalAlignment: Text.AlignRight
-            opacity: 0.55
-            text: root.info ? Model.deviceSummary(root.info) : ""
+            spacing: Style.spacing.md
+
+            // An untested mouse says so, and opens the report form for how it went.
+            Rectangle {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: root.supportBadge !== null
+              width: badgeLabel.implicitWidth + Style.spacing.md * 2
+              height: badgeLabel.implicitHeight + Style.spacing.xs * 2
+              radius: height / 2
+              color: badgeArea.containsMouse ? Util.alpha(Color.accent, 0.16) : "transparent"
+              border.width: Math.max(1, Style.normalBorderWidth)
+              border.color: Color.accent
+
+              Label {
+                id: badgeLabel
+                anchors.centerIn: parent
+                text: root.supportBadge ? root.supportBadge.text + "  ·  Report how it went" : ""
+                color: Color.accent
+                font.pixelSize: Style.font.caption
+              }
+
+              MouseArea {
+                id: badgeArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.reportDevice()
+                onContainsMouseChanged: if (containsMouse && root.supportBadge) root.say(root.supportBadge.detail, false)
+              }
+            }
+
+            Label {
+              anchors.verticalCenter: parent.verticalCenter
+              horizontalAlignment: Text.AlignRight
+              opacity: 0.55
+              text: root.info ? Model.deviceSummary(root.info) : ""
+            }
+          }
+        }
+
+        // ---- Untested mouse: accept once before the first write -------------
+        Rectangle {
+          anchors.fill: parent
+          z: 100
+          visible: root.acceptOpen
+          color: Util.alpha(Color.menu.background, 0.82)
+
+          // A click outside the dialog closes it without saving.
+          MouseArea {
+            anchors.fill: parent
+            onClicked: root.acceptOpen = false
+          }
+
+          Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - Style.space(48), Style.space(520))
+            height: acceptColumn.implicitHeight + Style.spacing.lg * 2
+            radius: Style.cornerRadius
+            color: Color.menu.background
+            border.width: Math.max(1, Style.normalBorderWidth)
+            border.color: Util.alpha(Color.accent, 0.7)
+
+            // Keeps clicks inside the dialog from closing it.
+            MouseArea { anchors.fill: parent }
+
+            Column {
+              id: acceptColumn
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.spacing.lg
+              spacing: Style.spacing.lg
+
+              PixelMark {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Style.space(56)
+                height: width
+              }
+
+              Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: root.support ? "Edit your " + root.support.name + "?" : ""
+                font.pixelSize: Style.font.title
+                font.bold: true
+              }
+
+              Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                opacity: 0.75
+                text: "Omalogi has not been tested on this model yet. It uses the same onboard memory as the verified G502 X, and every change is backed up first and read back to check it. You only need to accept this once."
+              }
+
+              Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Style.spacing.md
+
+                Button {
+                  text: "Edit it"
+                  bordered: true
+                  foreground: Color.accent
+                  onClicked: root.acceptUntested()
+                }
+
+                Button {
+                  text: "Not now"
+                  bordered: true
+                  foreground: Color.menu.text
+                  onClicked: root.acceptOpen = false
+                }
+              }
+
+              Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                opacity: 0.5
+                text: "After trying it, please tell us how it went with the Untested badge at the top."
+                font.pixelSize: Style.font.caption
+              }
+            }
           }
         }
 
