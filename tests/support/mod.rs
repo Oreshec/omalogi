@@ -2,7 +2,8 @@
 //!
 //! It answers HID++ 2.0 requests with the bytes a real device returned
 //! (`tests/fixtures/g502x-c099.json`), replies with HID++ error reports where a
-//! device would, and keeps the onboard mode and active profile as state.
+//! device would, and keeps mode, active profile and profile memory as state.
+//! Memory writes follow the sequence libratbag uses; factory sectors refuse them.
 
 use std::{
     collections::HashMap,
@@ -18,7 +19,9 @@ const FIXTURE: &str = include_str!("../fixtures/g502x-c099.json");
 const LONG_REPORT_ID: u8 = 0x11;
 const LONG_REPORT_LEN: usize = 20;
 const ERROR_FEATURE_INDEX: u8 = 0xFF;
-const MEMORY_READ_LEN: usize = 16;
+const MEMORY_CHUNK: usize = 16;
+const FIRST_FACTORY_SECTOR: u16 = 0x0100;
+const MAX_SECTOR_LEN: usize = 4096;
 
 // HID++ 2.0 error codes.
 const ERR_INVALID_ARGUMENT: u8 = 0x02;
@@ -26,6 +29,13 @@ const ERR_INVALID_FEATURE_INDEX: u8 = 0x06;
 const ERR_INVALID_FUNCTION_ID: u8 = 0x07;
 
 type BoxError = Box<dyn Error + Sync + Send>;
+
+/// A memory write between `memoryAddrWrite` and `memoryWriteEnd`.
+pub struct PendingWrite {
+    sector: u16,
+    size: usize,
+    data: Vec<u8>,
+}
 
 /// Mutable device state, shared with the test for setup and assertions.
 pub struct State {
@@ -35,6 +45,13 @@ pub struct State {
     pub current_profile: u8,
     /// When set, `setCurrentProfile` succeeds without changing anything.
     pub ignore_profile_switch: bool,
+    /// Profile memory by sector number.
+    pub sectors: HashMap<u16, Vec<u8>>,
+    pub pending_write: Option<PendingWrite>,
+    /// When set, the next committed write stores a flipped first byte.
+    pub corrupt_next_write: bool,
+    /// Sectors committed by `memoryWriteEnd`, in order.
+    pub committed: Vec<u16>,
     /// Every report the host wrote, in order.
     pub requests: Vec<Vec<u8>>,
 }
@@ -54,7 +71,6 @@ struct Fixture {
     rate_list: Vec<u8>,
     rate_current: Vec<u8>,
     description: Vec<u8>,
-    sectors: HashMap<u16, Vec<u8>>,
 }
 
 pub struct FakeG502x {
@@ -62,6 +78,22 @@ pub struct FakeG502x {
     state: Arc<Mutex<State>>,
     responses: mpsc::UnboundedSender<Vec<u8>>,
     reports: AsyncMutex<mpsc::UnboundedReceiver<Vec<u8>>>,
+}
+
+/// The dump's profile memory by sector number.
+pub fn fixture_sectors() -> HashMap<u16, Vec<u8>> {
+    let json: serde_json::Value = serde_json::from_str(FIXTURE).expect("fixture is JSON");
+    json["onboard"]["sectors"]
+        .as_object()
+        .expect("sectors")
+        .iter()
+        .map(|(id, data)| {
+            (
+                u16::from_str_radix(id, 16).expect("sector id"),
+                hex(data.as_str().expect("hex")),
+            )
+        })
+        .collect()
 }
 
 impl FakeG502x {
@@ -96,22 +128,15 @@ impl FakeG502x {
             rate_list: hex_at("/report_rate/list_bitmap_raw"),
             rate_current: hex_at("/report_rate/current_raw"),
             description: hex_at("/onboard/description"),
-            sectors: json["onboard"]["sectors"]
-                .as_object()
-                .expect("sectors")
-                .iter()
-                .map(|(id, data)| {
-                    (
-                        u16::from_str_radix(id, 16).expect("sector id"),
-                        hex(data.as_str().expect("hex")),
-                    )
-                })
-                .collect(),
         };
         let state = State {
             mode: hex_at("/onboard/mode")[0],
             current_profile: hex_at("/onboard/current_profile")[1],
             ignore_profile_switch: false,
+            sectors: fixture_sectors(),
+            pending_write: None,
+            corrupt_next_write: false,
+            committed: Vec::new(),
             requests: Vec::new(),
         };
         let (responses, reports) = mpsc::unbounded_channel();
@@ -230,10 +255,48 @@ impl FakeG502x {
             (0x8100, 5) => {
                 let sector = u16::from_be_bytes([params[0], params[1]]);
                 let offset = usize::from(u16::from_be_bytes([params[2], params[3]]));
-                let data = fx.sectors.get(&sector).ok_or(ERR_INVALID_ARGUMENT)?;
-                data.get(offset..offset + MEMORY_READ_LEN)
+                let data = state.sectors.get(&sector).ok_or(ERR_INVALID_ARGUMENT)?;
+                data.get(offset..offset + MEMORY_CHUNK)
                     .map(<[u8]>::to_vec)
                     .ok_or(ERR_INVALID_ARGUMENT)
+            }
+            // memoryAddrWrite(sector, offset, size): whole user sectors only.
+            (0x8100, 6) => {
+                let sector = u16::from_be_bytes([params[0], params[1]]);
+                let offset = u16::from_be_bytes([params[2], params[3]]);
+                let size = usize::from(u16::from_be_bytes([params[4], params[5]]));
+                if sector >= FIRST_FACTORY_SECTOR
+                    || offset != 0
+                    || size == 0
+                    || size > MAX_SECTOR_LEN
+                {
+                    return Err(ERR_INVALID_ARGUMENT);
+                }
+                state.pending_write = Some(PendingWrite {
+                    sector,
+                    size,
+                    data: Vec::with_capacity(size),
+                });
+                Ok(Vec::new())
+            }
+            (0x8100, 7) => {
+                let pending = state.pending_write.as_mut().ok_or(ERR_INVALID_ARGUMENT)?;
+                pending.data.extend_from_slice(&params[..MEMORY_CHUNK]);
+                Ok(Vec::new())
+            }
+            (0x8100, 8) => {
+                let mut pending = state.pending_write.take().ok_or(ERR_INVALID_ARGUMENT)?;
+                if pending.data.len() < pending.size {
+                    return Err(ERR_INVALID_ARGUMENT);
+                }
+                pending.data.truncate(pending.size);
+                if state.corrupt_next_write {
+                    state.corrupt_next_write = false;
+                    pending.data[0] ^= 0xFF;
+                }
+                state.sectors.insert(pending.sector, pending.data);
+                state.committed.push(pending.sector);
+                Ok(Vec::new())
             }
             _ => Err(ERR_INVALID_FUNCTION_ID),
         }

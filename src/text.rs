@@ -4,6 +4,7 @@ use std::fmt::Write;
 
 use omalogi::{
     device::{Info, OnboardState, ProfileSlot},
+    editing::{EditPlan, RestorePlan, RestoreReport, WriteReport},
     onboard::{
         Mode,
         format::{Binding, Profile},
@@ -69,6 +70,45 @@ pub fn profiles(state: &OnboardState) -> String {
     out
 }
 
+pub fn edit_plan(plan: &EditPlan) -> String {
+    let mut out = format!(
+        "Profile {} would change (dry run, nothing written):\n",
+        plan.profile
+    );
+    changes(&mut out, &plan.before, &plan.after);
+    out
+}
+
+pub fn write_report(report: &WriteReport) -> String {
+    let mut out = format!("Profile {} updated and verified:\n", report.plan.profile);
+    changes(&mut out, &report.plan.before, &report.plan.after);
+    let _ = writeln!(
+        out,
+        "Backup of the previous memory: {}",
+        report.backup.display()
+    );
+    out
+}
+
+pub fn restore_plan(plan: &RestorePlan) -> String {
+    if plan.sectors.is_empty() {
+        "The mouse already matches the backup.\n".to_owned()
+    } else {
+        format!(
+            "Restoring would write sectors {} (dry run, nothing written).\n",
+            sector_list(&plan.sectors)
+        )
+    }
+}
+
+pub fn restore_report(report: &RestoreReport) -> String {
+    format!(
+        "Restored and verified sectors {}.\nBackup of the memory before restoring: {}\n",
+        sector_list(&report.sectors),
+        report.backup.display()
+    )
+}
+
 fn profile(out: &mut String, slot: &ProfileSlot) {
     let p = &slot.profile;
     let mut flags = vec![if slot.enabled { "enabled" } else { "disabled" }];
@@ -93,17 +133,60 @@ fn profile(out: &mut String, slot: &ProfileSlot) {
         return;
     }
 
-    let rate = if p.report_rate_ms == 0 {
-        "unknown".to_owned()
-    } else {
-        format!("{} Hz", 1000 / u16::from(p.report_rate_ms))
-    };
-    let _ = writeln!(out, "  Report rate  {rate}");
+    let _ = writeln!(out, "  Report rate  {}", report_rate(p));
     let _ = writeln!(out, "  DPI stages   {}", dpi_stages(p));
 
     bindings(out, "Buttons", &p.buttons);
     if p.gshift_buttons.iter().any(|b| *b != Binding::Disabled) {
         bindings(out, "G-Shift", &p.gshift_buttons);
+    }
+}
+
+fn changes(out: &mut String, before: &Profile, after: &Profile) {
+    if before.report_rate_ms != after.report_rate_ms {
+        let _ = writeln!(
+            out,
+            "  Report rate  {} → {}",
+            report_rate(before),
+            report_rate(after)
+        );
+    }
+    let stages = |p: &Profile| (p.dpi_stages, p.default_dpi_index, p.shift_dpi_index);
+    if stages(before) != stages(after) {
+        let _ = writeln!(
+            out,
+            "  DPI stages   {}  →  {}",
+            dpi_stages(before),
+            dpi_stages(after)
+        );
+    }
+    binding_changes(out, "Button", &before.buttons, &after.buttons);
+    binding_changes(
+        out,
+        "G-Shift",
+        &before.gshift_buttons,
+        &after.gshift_buttons,
+    );
+}
+
+fn binding_changes(out: &mut String, title: &str, before: &[Binding], after: &[Binding]) {
+    for (slot, (old, new)) in before.iter().zip(after).enumerate() {
+        if old != new {
+            let _ = writeln!(
+                out,
+                "  {title} slot {slot:>2}  {} → {}",
+                label::binding(old),
+                label::binding(new)
+            );
+        }
+    }
+}
+
+fn report_rate(p: &Profile) -> String {
+    if p.report_rate_ms == 0 {
+        "unknown".to_owned()
+    } else {
+        format!("{} Hz", 1000 / u16::from(p.report_rate_ms))
     }
 }
 
@@ -137,6 +220,14 @@ fn bindings(out: &mut String, title: &str, bindings: &[Binding]) {
             let _ = writeln!(out, "    slot {slot:>2}  {}", label::binding(binding));
         }
     }
+}
+
+fn sector_list(sectors: &[u16]) -> String {
+    sectors
+        .iter()
+        .map(|sector| format!("{sector:04x}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn mode(mode: Mode) -> String {

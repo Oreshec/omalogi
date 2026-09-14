@@ -4,7 +4,7 @@
 //! `src/hidpp20.h`, button bindings). Profiles are only decoded for layouts in
 //! [`VERIFIED_LAYOUTS`], which were checked against real hardware.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Sector holding the directory of user profiles.
@@ -22,15 +22,15 @@ pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 4)];
 const DESCRIPTION_LEN: usize = 11;
 const DIRECTORY_END: u16 = 0xFFFF;
 const DIRECTORY_ENTRY_LEN: usize = 4;
-const DPI_STAGE_COUNT: usize = 5;
-const DPI_OFFSET: usize = 3;
-const BUTTON_SLOTS: usize = 16;
-const BINDING_LEN: usize = 4;
-const BUTTON_OFFSET: usize = 32;
-const GSHIFT_BUTTON_OFFSET: usize = BUTTON_OFFSET + BUTTON_SLOTS * BINDING_LEN;
+pub(crate) const DPI_STAGE_COUNT: usize = 5;
+pub(crate) const DPI_OFFSET: usize = 3;
+pub(crate) const BUTTON_SLOTS: usize = 16;
+pub(crate) const BINDING_LEN: usize = 4;
+pub(crate) const BUTTON_OFFSET: usize = 32;
+pub(crate) const GSHIFT_BUTTON_OFFSET: usize = BUTTON_OFFSET + BUTTON_SLOTS * BINDING_LEN;
 const NAME_OFFSET: usize = GSHIFT_BUTTON_OFFSET + BUTTON_SLOTS * BINDING_LEN;
 const NAME_LEN: usize = 48;
-const MIN_SECTOR_LEN: usize = NAME_OFFSET + NAME_LEN;
+pub(crate) const MIN_SECTOR_LEN: usize = NAME_OFFSET + NAME_LEN;
 const MAX_SECTOR_LEN: usize = 4096;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -60,7 +60,7 @@ fn ensure_len(data: &[u8], expected: usize) -> Result<(), DecodeError> {
 }
 
 /// The reply to `getDescription`: how the device lays out its profile memory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Description {
     pub memory_model: u8,
     pub profile_format: u8,

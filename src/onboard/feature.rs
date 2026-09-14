@@ -14,13 +14,16 @@ use hidpp::{
 use serde::Serialize;
 use thiserror::Error;
 
-use super::format::{DecodeError, Description, READ_CHUNK};
+use super::format::{DecodeError, Description, READ_CHUNK, ROM_DIRECTORY_SECTOR};
 
 const GET_DESCRIPTION: u8 = 0;
 const GET_MODE: u8 = 2;
 const SET_CURRENT_PROFILE: u8 = 3;
 const GET_CURRENT_PROFILE: u8 = 4;
 const MEMORY_READ: u8 = 5;
+const MEMORY_WRITE_START: u8 = 6;
+const MEMORY_WRITE: u8 = 7;
+const MEMORY_WRITE_END: u8 = 8;
 
 const SHORT_PARAMS: usize = 3;
 const LONG_PARAMS: usize = 16;
@@ -31,6 +34,8 @@ pub enum OnboardError {
     Device(#[from] Hidpp20Error),
     #[error("onboard profiles data could not be decoded")]
     Decode(#[from] DecodeError),
+    #[error("sector {0:#06x} holds factory profiles and is never written")]
+    ProtectedSector(u16),
 }
 
 /// Who is in control of DPI, report rate and buttons.
@@ -120,6 +125,41 @@ impl OnboardProfilesFeature {
             offset = at + READ_CHUNK;
         }
         Ok(data)
+    }
+
+    /// Writes a whole user sector to flash: `memoryAddrWrite(sector, 0, size)`, the data
+    /// in 16-byte `memoryWrite` chunks (the last padded with 0xFF), then `memoryWriteEnd`.
+    /// This is the sequence libratbag's `hidpp20_onboard_profiles_write_sector` uses.
+    ///
+    /// `data` must already end in its CRC. Factory sectors are refused before
+    /// anything is sent. Callers read the sector back to verify the write.
+    pub async fn write_sector(&self, sector: u16, data: &[u8]) -> Result<(), OnboardError> {
+        if sector >= ROM_DIRECTORY_SECTOR {
+            return Err(OnboardError::ProtectedSector(sector));
+        }
+        if data.len() < 2 {
+            return Err(DecodeError::TooShort {
+                expected: 2,
+                actual: data.len(),
+            }
+            .into());
+        }
+        let size =
+            u16::try_from(data.len()).map_err(|_| DecodeError::UnsupportedSectorSize(u16::MAX))?;
+        let [sector_hi, sector_lo] = sector.to_be_bytes();
+        let [size_hi, size_lo] = size.to_be_bytes();
+        self.call(
+            MEMORY_WRITE_START,
+            &[sector_hi, sector_lo, 0, 0, size_hi, size_lo],
+        )
+        .await?;
+        for chunk in data.chunks(LONG_PARAMS) {
+            let mut padded = [0xFF; LONG_PARAMS];
+            padded[..chunk.len()].copy_from_slice(chunk);
+            self.call(MEMORY_WRITE, &padded).await?;
+        }
+        self.call(MEMORY_WRITE_END, &[]).await?;
+        Ok(())
     }
 
     async fn call(&self, function: u8, params: &[u8]) -> Result<[u8; LONG_PARAMS], Hidpp20Error> {

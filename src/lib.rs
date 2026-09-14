@@ -2,6 +2,7 @@
 
 pub mod daemon;
 pub mod device;
+pub mod editing;
 pub mod hidraw;
 pub mod hyprland;
 pub mod onboard;

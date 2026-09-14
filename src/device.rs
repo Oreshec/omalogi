@@ -188,7 +188,12 @@ impl Session {
         })
     }
 
-    async fn feature<F: CreatableFeature>(
+    #[must_use]
+    pub fn model(&self) -> SupportedDevice {
+        self.model
+    }
+
+    pub(crate) async fn feature<F: CreatableFeature>(
         &mut self,
         name: &'static str,
     ) -> Result<Arc<F>, SessionError> {
@@ -394,7 +399,9 @@ impl Session {
         })
     }
 
-    async fn onboard_feature(&mut self) -> Result<Arc<OnboardProfilesFeature>, SessionError> {
+    pub(crate) async fn onboard_feature(
+        &mut self,
+    ) -> Result<Arc<OnboardProfilesFeature>, SessionError> {
         self.feature::<OnboardProfilesFeature>("onboard profiles (0x8100)")
             .await
     }
@@ -408,7 +415,7 @@ fn labels_for(bindings: &[Binding]) -> Vec<Option<String>> {
 }
 
 /// Reads the user profile directory, refusing one whose checksum does not match.
-async fn read_directory(
+pub(crate) async fn read_directory(
     feature: &OnboardProfilesFeature,
     description: &Description,
 ) -> Result<Vec<DirectoryEntry>, SessionError> {
@@ -426,7 +433,7 @@ async fn read_directory(
 
 /// Expands an AdjustableDPI sensor list: plain values, and `min, 0xE000 | step, max`
 /// ranges. A zero value ends the list.
-fn expand_dpi_list(list: &[u16]) -> Vec<u16> {
+pub(crate) fn expand_dpi_list(list: &[u16]) -> Vec<u16> {
     let mut values: Vec<u16> = Vec::new();
     let mut items = list.iter().copied().take_while(|&value| value != 0);
     while let Some(value) = items.next() {
@@ -452,7 +459,7 @@ fn expand_dpi_list(list: &[u16]) -> Vec<u16> {
 
 /// Report rates in ascending order from a ReportRate bitmap, where bit `i` means an
 /// `i + 1` ms interval.
-fn report_rates_hz(bitmap: u8) -> Vec<u16> {
+pub(crate) fn report_rates_hz(bitmap: u8) -> Vec<u16> {
     (0..8u8)
         .rev()
         .filter(|bit| bitmap & (1 << bit) != 0)
@@ -460,7 +467,7 @@ fn report_rates_hz(bitmap: u8) -> Vec<u16> {
         .collect()
 }
 
-fn interval_to_hz(interval_ms: u8) -> Option<u16> {
+pub(crate) fn interval_to_hz(interval_ms: u8) -> Option<u16> {
     (interval_ms != 0).then(|| 1000 / u16::from(interval_ms))
 }
 
