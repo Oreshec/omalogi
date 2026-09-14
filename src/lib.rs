@@ -5,6 +5,7 @@ pub mod device;
 pub mod editing;
 pub mod hidraw;
 pub mod hyprland;
+pub mod lock;
 pub mod onboard;
 pub mod rules;
 

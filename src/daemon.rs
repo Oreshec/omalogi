@@ -10,6 +10,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use hidpp::channel::ChannelError;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::{
@@ -21,6 +22,7 @@ use crate::{
     device::{DAEMON_SOFTWARE_ID, Session, SessionError},
     error_chain,
     hyprland::{self, Event, HyprlandError},
+    lock::DeviceLock,
     rules::{Config, Focus, Reason},
 };
 
@@ -123,6 +125,20 @@ struct Daemon {
     state_path: PathBuf,
     device_error: Option<String>,
     rule_error: Option<String>,
+    lock_path: Option<PathBuf>,
+    lock_warned: bool,
+    /// Rules to apply once the device is free again.
+    rules_pending: bool,
+    /// Consecutive requests that stalled; the session is dropped on the second.
+    transient_failures: u8,
+}
+
+/// Whether the daemon may use the device now.
+enum Access {
+    /// Holds the device lock, or runs without one when no lock file can be used.
+    Granted(Option<DeviceLock>),
+    /// Another Omalogi process is writing profile memory.
+    Busy,
 }
 
 pub async fn run(config_path: PathBuf) -> Result<(), DaemonError> {
@@ -138,7 +154,7 @@ pub async fn run(config_path: PathBuf) -> Result<(), DaemonError> {
         state_path.display()
     );
     let mut daemon = Daemon::new(ConfigWatch::new(config_path), state_path, focus);
-    daemon.refresh_device().await;
+    daemon.on_tick().await;
     daemon.publish()?;
 
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
@@ -150,13 +166,13 @@ pub async fn run(config_path: PathBuf) -> Result<(), DaemonError> {
             event = events.next() => match event {
                 Ok(Some(event)) => {
                     if daemon.focus_changed(event) {
-                        daemon.apply_rules().await;
+                        daemon.on_focus_changed().await;
                     }
                 }
                 Ok(None) => break Err(DaemonError::HyprlandClosed),
                 Err(error) => break Err(error.into()),
             },
-            _ = ticker.tick() => daemon.refresh_device().await,
+            _ = ticker.tick() => daemon.on_tick().await,
             _ = terminate.recv() => break Ok(()),
             _ = interrupt.recv() => break Ok(()),
         }
@@ -193,6 +209,49 @@ impl Daemon {
             state_path,
             device_error: None,
             rule_error: None,
+            lock_path: DeviceLock::default_path(),
+            lock_warned: false,
+            rules_pending: false,
+            transient_failures: 0,
+        }
+    }
+
+    /// Periodic work: reconnect, read the active profile, apply pending or edited rules.
+    /// Skipped while another Omalogi process is writing profile memory.
+    async fn on_tick(&mut self) {
+        let Access::Granted(_lock) = self.device_access() else {
+            return;
+        };
+        self.refresh_device().await;
+        if std::mem::take(&mut self.rules_pending) {
+            self.apply_rules().await;
+        }
+    }
+
+    /// Applies rules for the new focus, or on the next tick if the device is busy.
+    async fn on_focus_changed(&mut self) {
+        match self.device_access() {
+            Access::Granted(_lock) => self.apply_rules().await,
+            Access::Busy => self.rules_pending = true,
+        }
+    }
+
+    fn device_access(&mut self) -> Access {
+        let Some(path) = &self.lock_path else {
+            return Access::Granted(None);
+        };
+        match DeviceLock::try_acquire(path) {
+            Ok(Some(lock)) => Access::Granted(Some(lock)),
+            Ok(None) => Access::Busy,
+            Err(error) => {
+                if !std::mem::replace(&mut self.lock_warned, true) {
+                    eprintln!(
+                        "omalogi daemon: could not use {}: {error}; continuing without the device lock",
+                        path.display()
+                    );
+                }
+                Access::Granted(None)
+            }
         }
     }
 
@@ -234,6 +293,7 @@ impl Daemon {
                 );
                 self.state.active_profile = Some(profile);
                 self.state.source = Some(source);
+                self.transient_failures = 0;
             }
             Err(error) => self.handle_error(error, Some(&source)),
         }
@@ -271,6 +331,7 @@ impl Daemon {
         };
         match session.active_profile().await {
             Ok(profile) => {
+                self.transient_failures = 0;
                 if profile != self.state.active_profile {
                     self.state.active_profile = profile;
                     self.state.source = None;
@@ -280,8 +341,9 @@ impl Daemon {
         }
     }
 
-    /// Rule problems are reported and the device stays open; anything else drops the
-    /// session so the next poll reconnects.
+    /// Rule problems are reported and the device stays open. A single stalled request
+    /// is retried on the next poll; anything else drops the session so the next poll
+    /// reconnects.
     fn handle_error(&mut self, error: SessionError, source: Option<&str>) {
         let message = error_chain(&error);
         match error {
@@ -293,8 +355,16 @@ impl Daemon {
                     None => message,
                 });
             }
+            _ if is_transient(&error) && self.transient_failures == 0 => {
+                self.transient_failures = 1;
+                if source.is_some() {
+                    self.rules_pending = true;
+                }
+                eprintln!("omalogi daemon: device request stalled, retrying next poll: {message}");
+            }
             _ => {
                 eprintln!("omalogi daemon: device lost: {message}");
+                self.transient_failures = 0;
                 self.device_error = Some(message);
                 self.disconnect();
             }
@@ -331,6 +401,25 @@ impl Daemon {
     }
 }
 
+/// Whether an error is a request that stalled or timed out, rather than a missing device.
+fn is_transient(error: &SessionError) -> bool {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(error) = current {
+        if let Some(channel) = error.downcast_ref::<ChannelError>()
+            && matches!(channel, ChannelError::Timeout | ChannelError::NoResponse)
+        {
+            return true;
+        }
+        if let Some(io) = error.downcast_ref::<io::Error>()
+            && io.raw_os_error() == Some(libc::ETIMEDOUT)
+        {
+            return true;
+        }
+        current = error.source();
+    }
+    false
+}
+
 fn write_atomically(path: &Path, state: &State) -> Result<(), DaemonError> {
     let error = |source| DaemonError::State {
         path: path.display().to_string(),
@@ -361,6 +450,50 @@ mod tests {
             dir.join("state.json"),
             Focus::default(),
         )
+    }
+
+    #[test]
+    fn stalled_requests_are_transient_but_missing_devices_are_not() {
+        use crate::hidraw::HidrawError;
+        use hidpp::protocol::v20::Hidpp20Error;
+
+        let timeout = SessionError::Request(Hidpp20Error::Channel(ChannelError::Timeout));
+        assert!(is_transient(&timeout));
+
+        // The failure observed on hardware: hidraw write returned ETIMEDOUT.
+        let stalled_write = SessionError::Request(Hidpp20Error::Channel(
+            ChannelError::Implementation(Box::new(io::Error::from_raw_os_error(libc::ETIMEDOUT))),
+        ));
+        assert!(is_transient(&stalled_write));
+
+        let gone = SessionError::Request(Hidpp20Error::Channel(ChannelError::Implementation(
+            Box::new(io::Error::from_raw_os_error(libc::ENODEV)),
+        )));
+        assert!(!is_transient(&gone));
+        assert!(!is_transient(&SessionError::Hidraw(HidrawError::NotFound)));
+    }
+
+    #[test]
+    fn one_stall_keeps_the_session_state_and_two_drop_it() {
+        use hidpp::protocol::v20::Hidpp20Error;
+
+        let dir = temp_dir("stalls");
+        let mut daemon = daemon(&dir);
+        daemon.state.connected = true;
+        daemon.state.active_profile = Some(2);
+        let stall = || SessionError::Request(Hidpp20Error::Channel(ChannelError::Timeout));
+
+        daemon.handle_error(stall(), Some("rule 1"));
+        assert!(daemon.state.connected);
+        assert_eq!(daemon.state.active_profile, Some(2));
+        assert!(daemon.rules_pending, "the rule is retried on the next tick");
+        assert_eq!(daemon.device_error, None);
+
+        daemon.handle_error(stall(), None);
+        assert!(!daemon.state.connected);
+        assert_eq!(daemon.state.active_profile, None);
+        assert!(daemon.device_error.is_some());
+        std::fs::remove_dir_all(&dir).expect("clean up");
     }
 
     #[test]

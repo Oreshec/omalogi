@@ -15,6 +15,7 @@ use omalogi::{
     device::{CLI_SOFTWARE_ID, Session},
     editing::{BackupFile, ProfileChanges, save_backup},
     error_chain,
+    lock::DeviceLock,
     onboard::{action::parse_action, format::Binding},
     rules::Config,
 };
@@ -201,6 +202,7 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
                 let plan = session.plan_profile_changes(number, &changes).await?;
                 output(json, &plan, || text::edit_plan(&plan))?;
             } else {
+                let _lock = device_lock()?;
                 let path = default_backup_path(session.model().name)?;
                 let report = session
                     .apply_profile_changes(number, &changes, &path)
@@ -238,6 +240,7 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
                 let plan = session.plan_restore(&backup).await?;
                 output(json, &plan, || text::restore_plan(&plan))?;
             } else {
+                let _lock = device_lock()?;
                 let path = default_backup_path(session.model().name)?;
                 let report = session.restore(&backup, &path).await?;
                 output(json, &report, || text::restore_report(&report))?;
@@ -245,6 +248,16 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
         }
     }
     Ok(())
+}
+
+/// Held for a whole memory write or restore, so the daemon never polls in the middle.
+fn device_lock() -> Result<Option<DeviceLock>, Box<dyn Error>> {
+    let Some(path) = DeviceLock::default_path() else {
+        return Ok(None);
+    };
+    let lock = DeviceLock::acquire(&path)
+        .map_err(|error| format!("could not lock {}: {error}", path.display()))?;
+    Ok(Some(lock))
 }
 
 fn parse_slot_action(text: &str) -> Result<(usize, Binding), String> {
