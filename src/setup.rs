@@ -25,6 +25,8 @@ const PACKAGED_EXEC: &str = "ExecStart=/usr/bin/omalogi daemon";
 /// The shell plugin, built into the binary so the installed plugin always matches it.
 pub const PLUGIN_FILES: &[(&str, &str)] = &[
     ("manifest.json", include_str!("../manifest.json")),
+    // The overlay runs it to install or update the helper.
+    ("install.sh", include_str!("../install.sh")),
     ("plugin/Omalogi.qml", include_str!("../plugin/Omalogi.qml")),
     (
         "plugin/OmalogiCommand.qml",

@@ -74,14 +74,15 @@ terminal running the installer, which checks the download's SHA-256 and asks for
 once. `omarchy plugin update` keeps the plugin current, and Omalogi tells you when its
 helper needs updating too.
 
-To install the helper yourself, which also adds the plugin if it is missing:
+To run the helper installer yourself, from the plugin folder:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/elberacasa/omalogi/main/install.sh | bash
+bash ~/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh
 ```
 
-It installs `omalogi` to `~/.local/bin`, the udev rule below, and runs `omalogi setup`;
-run it again to update. On Arch you can instead install the
+It downloads the release binary from this repository, checks its SHA-256, installs
+`omalogi` to `~/.local/bin` and the udev rule below, and runs `omalogi setup`; run it
+again to update. On Arch you can instead install the
 [`omalogi`](packaging/aur/omalogi) AUR package and run `omalogi setup`.
 
 ## Install from source
@@ -263,17 +264,21 @@ not have yet, and the Omarchy integration.
 
 ## Uninstall
 
+Remove the plugin, then its helper:
+
 ```sh
+omarchy plugin remove io.github.elberacasa.omalogi
 systemctl --user disable --now omalogi.service
-rm ~/.config/systemd/user/omalogi.service
-omarchy plugin disable io.github.elberacasa.omalogi
-rm -r ~/.config/omarchy/plugins/io.github.elberacasa.omalogi
-rm ~/.local/bin/omalogi
-sudo rm /usr/lib/udev/rules.d/70-omalogi.rules && sudo udevadm control --reload-rules
+rm -f ~/.config/systemd/user/omalogi.service ~/.local/bin/omalogi
+sudo rm -f /etc/udev/rules.d/70-omalogi.rules && sudo udevadm control --reload-rules
 ```
 
-Backups in `~/.local/state/omalogi/backups/` and rules in `~/.config/omalogi/` are kept;
-remove them if you no longer need them. Nothing is changed on the mouse by uninstalling.
+`omarchy plugin remove` unloads Omalogi and takes it off the bar. If you installed the
+helper from the AUR, run `sudo pacman -R omalogi` instead of the last two lines.
+
+Your mouse keeps its onboard profiles: uninstalling changes nothing on it. Backups in
+`~/.local/state/omalogi/backups/` and rules in `~/.config/omalogi/` are kept; delete them
+if you no longer need them.
 
 ## Credits
 

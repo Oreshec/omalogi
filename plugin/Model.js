@@ -21,9 +21,29 @@ function errorMessage(stderr, exitCode) {
 }
 
 // Omalogi installs in two parts: this plugin, added like any Omarchy plugin, and its
-// helper (the omalogi command and a udev rule), from the checksum-verified installer.
+// helper (the omalogi command and a udev rule), from the installer in this checkout.
 var PLUGIN_ADD_COMMAND = "omarchy plugin add https://github.com/elberacasa/omalogi --enable"
-var HELPER_INSTALL_COMMAND = "curl -fsSL https://raw.githubusercontent.com/elberacasa/omalogi/main/install.sh | bash"
+
+// `script` quoted for a shell, so a plugin folder with spaces or quotes stays one word.
+function shellQuote(script) {
+  return "'" + String(script).replace(/'/g, "'\\''") + "'"
+}
+
+// The command that runs the plugin's own install.sh: the reviewed code in this checkout,
+// never a download piped to a shell.
+function helperInstallCommand(installScript) {
+  return "bash " + shellQuote(installScript)
+}
+
+// Runs it in Omarchy's floating terminal, as the bar's update button runs omarchy-update.
+function helperInstallArgv(installScript) {
+  return ["omarchy-launch-floating-terminal-with-presentation", helperInstallCommand(installScript)]
+}
+
+// A local path from a file: URL, e.g. Qt.resolvedUrl("../install.sh").
+function localPath(url) {
+  return decodeURIComponent(String(url).replace(/^file:\/\//, ""))
+}
 // The oldest `omalogi serve` request format this plugin works with.
 var REQUIRED_PROTOCOL = 1
 

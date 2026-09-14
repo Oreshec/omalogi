@@ -614,6 +614,12 @@ test("the setup screen names the one step that reaches the mouse", () => {
   assert.equal(Model.helperOutdated({ info: {}, onboard: {} }), false, "helpers that do not report a protocol speak 1")
   assert.equal(Model.helperOutdated({ helper: { version: "0.2.0", protocol: 1 } }), false)
   assert.equal(Model.helperOutdated({ helper: { version: "0.0.1", protocol: 0.5 } }), true)
-  assert.match(Model.HELPER_INSTALL_COMMAND, /^curl -fsSL https:\/\/raw\.githubusercontent\.com\/elberacasa\/omalogi\/main\/install\.sh \| bash$/)
+  assert.equal(Model.helperInstallCommand("/home/me/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh"),
+    "bash '/home/me/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh'")
+  assert.equal(Model.helperInstallCommand("/tmp/it's here/install.sh"), "bash '/tmp/it'\\''s here/install.sh'")
+  assert.deepEqual(plain(Model.helperInstallArgv("/p/install.sh")),
+    ["omarchy-launch-floating-terminal-with-presentation", "bash '/p/install.sh'"])
+  assert.equal(Model.localPath("file:///home/me/My%20Plugins/install.sh"), "/home/me/My Plugins/install.sh")
+  assert.doesNotMatch(Model.helperInstallCommand("/p/install.sh"), /curl|wget/, "never a download piped to a shell")
   assert.match(Model.PLUGIN_ADD_COMMAND, /^omarchy plugin add https:\/\/github\.com\/elberacasa\/omalogi --enable$/)
 })

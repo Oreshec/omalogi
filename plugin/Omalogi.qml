@@ -338,10 +338,13 @@ Item {
     else root.loadError = message
   }
 
-  // Runs the helper installer in Omarchy's floating terminal, as the bar's update button
-  // runs omarchy-update, so the password prompt and progress stay in plain sight.
+  // The installer that came with this plugin, beside manifest.json.
+  readonly property string installScript: Model.localPath(Qt.resolvedUrl("../install.sh"))
+
+  // Runs the plugin's own installer in Omarchy's floating terminal, as the bar's update
+  // button runs omarchy-update, so the password prompt and progress stay in plain sight.
   function installHelper() {
-    Util.execArgv(["omarchy-launch-floating-terminal-with-presentation", Model.HELPER_INSTALL_COMMAND])
+    Util.execArgv(Model.helperInstallArgv(root.installScript))
     root.say("Finish the installer in the terminal, then choose Try again.", false)
   }
 
@@ -774,7 +777,7 @@ Item {
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.WrapAnywhere
               opacity: 0.45
-              text: "Opens a terminal and runs  " + Model.HELPER_INSTALL_COMMAND
+              text: "Opens a terminal and runs  " + Model.helperInstallCommand(root.installScript)
               font.pixelSize: Style.font.caption
             }
           }

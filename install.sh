@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Install Omalogi for the current user:
+# Install or update Omalogi's helper for the current user.
 #
-#   curl -fsSL https://raw.githubusercontent.com/elberacasa/omalogi/main/install.sh | bash
+# After `omarchy plugin add https://github.com/elberacasa/omalogi --enable`, Omalogi runs
+# this script from its plugin folder when the helper is missing or too old. To run it
+# yourself: bash ~/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh
 #
-# Downloads the latest release, checks its SHA-256, installs the binary to ~/.local/bin,
-# installs the udev rule that lets your user reach the mouse (sudo, once), and runs
-# `omalogi setup` for the shell plugin, bar indicator and daemon. Run it again to update.
+# Downloads the release binary from this repository's GitHub releases, checks its
+# SHA-256, installs it to ~/.local/bin, installs the udev rule that lets your user reach
+# the mouse (sudo, once), and runs `omalogi setup` for the bar indicator and daemon.
 #
 # OMALOGI_VERSION=v0.1.0 pins a release; OMALOGI_BIN_DIR changes where the binary goes.
 set -euo pipefail
 
-REPO=elberacasa/omalogi
 VERSION=${OMALOGI_VERSION:-latest}
 BIN_DIR=${OMALOGI_BIN_DIR:-$HOME/.local/bin}
 RULE=/etc/udev/rules.d/70-omalogi.rules
@@ -29,9 +30,9 @@ for tool in curl tar sha256sum install; do
 done
 
 if [ "$VERSION" = latest ]; then
-  base="https://github.com/$REPO/releases/latest/download"
+  base="https://github.com/elberacasa/omalogi/releases/latest/download"
 else
-  base="https://github.com/$REPO/releases/download/$VERSION"
+  base="https://github.com/elberacasa/omalogi/releases/download/$VERSION"
 fi
 name="omalogi-$target"
 tmp=$(mktemp -d)
