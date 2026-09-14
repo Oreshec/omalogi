@@ -1,7 +1,7 @@
 # Maintainer: elberacasa <https://github.com/elberacasa>
 
 pkgname=omalogi
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Configure Logitech G-series mice on Omarchy: onboard profiles, DPI, buttons, per-app switching'
 arch=('x86_64' 'aarch64')
@@ -18,7 +18,7 @@ install=omalogi.install
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 
-sha256sums=('330288bdff4db2832f3ca1566540c32a3ef344e488d2304c816cc46c2a732766')
+sha256sums=('7d719ad90c81fd76893c8124b8f4ca10aa20f028d0c68dfc79469bb51a52aea2')
 
 prepare() {
   cd "$pkgname-$pkgver"
