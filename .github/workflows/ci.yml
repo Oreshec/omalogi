@@ -42,7 +42,8 @@ jobs:
         run: jq -e '.schemaVersion == 1 and .entryPoints.overlay' manifest.json
 
       - name: Model tests
-        run: node --test plugin/tests
+        # A glob, not the directory: Node before 23 runs a directory argument as a file.
+        run: node --test "plugin/tests/**/*.test.js"
 
   installer:
     runs-on: ubuntu-latest

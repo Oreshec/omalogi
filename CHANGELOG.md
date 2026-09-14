@@ -5,6 +5,8 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.1.0] - 2026-09-14
+
 ### Added
 
 - `omalogi info`, `omalogi profiles` and `omalogi backup`: device, firmware, DPI and
