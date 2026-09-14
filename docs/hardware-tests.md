@@ -80,6 +80,20 @@ active profile was switched to 1 underneath it:
 
 Result: **pass**. The daemon does not touch the device while a memory write holds the lock.
 
+## 2026-09-13 — udev rule
+
+`packaging/udev/70-omalogi.rules` installed to `/usr/lib/udev/rules.d/`, rules reloaded,
+hidraw change event triggered, mouse not replugged:
+
+| Node | USB interface | Tags |
+|---|---|---|
+| hidraw7 | 00 (mouse input) | `:seat:` |
+| hidraw8 | 01 (HID++) | `:seat:uaccess:` |
+
+`omalogi info` opened hidraw8. Result: **pass** for matching: only the HID++ interface is
+tagged. The session ACL on hidraw8 was already present from an earlier manual `setfacl`,
+so access coming from the rule alone is confirmed after the next replug.
+
 ## Observations
 
 - 2026-09-13 20:00:34: one daemon poll failed with `ETIMEDOUT` (os error 110) from the
@@ -94,3 +108,5 @@ Result: **pass**. The daemon does not touch the device while a memory write hold
   without re-selecting it.
 - The rollback path after a failed verification (tested on the emulated device only).
 - Unplugging the mouse during a write.
+- A write started from the overlay editor (preview and rendering are tested).
+- Device access through the udev rule alone, after a replug.
