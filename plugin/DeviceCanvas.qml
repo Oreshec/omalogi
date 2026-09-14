@@ -75,11 +75,22 @@ Item {
     border.width: selected ? Math.max(2, Style.normalBorderWidth) : Math.max(1, Style.normalBorderWidth)
     border.color: selected ? Color.accent : Util.alpha(Color.menu.text, hovered ? 0.45 : 0.16)
 
+    Icon {
+      id: cardIcon
+      anchors.left: parent.left
+      anchors.leftMargin: Style.spacing.md
+      anchors.verticalCenter: parent.verticalCenter
+      name: Model.actionIcon(card.entry.action)
+      tint: card.entry.changed || card.selected ? Color.accent : Color.menu.text
+      size: Style.space(18)
+      opacity: card.entry.name === "" ? 0 : 1
+    }
+
     Column {
       anchors.verticalCenter: parent.verticalCenter
-      anchors.left: parent.left
+      anchors.left: cardIcon.right
       anchors.right: parent.right
-      anchors.leftMargin: Style.spacing.md
+      anchors.leftMargin: Style.spacing.sm
       anchors.rightMargin: Style.spacing.md + Style.space(8)
 
       Text {

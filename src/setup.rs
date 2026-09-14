@@ -36,6 +36,12 @@ pub const PLUGIN_FILES: &[(&str, &str)] = &[
     ),
     ("plugin/Model.js", include_str!("../plugin/Model.js")),
     (
+        "plugin/DpiTrack.qml",
+        include_str!("../plugin/DpiTrack.qml"),
+    ),
+    ("plugin/Icons.js", include_str!("../plugin/Icons.js")),
+    ("plugin/Icon.qml", include_str!("../plugin/Icon.qml")),
+    (
         "plugin/OmalogiServer.qml",
         include_str!("../plugin/OmalogiServer.qml"),
     ),

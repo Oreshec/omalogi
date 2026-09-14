@@ -3,8 +3,9 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// What the selected button does, and everything it can do instead: the current action,
-// a searchable list grouped like G HUB's, and a recorder for keyboard shortcuts.
+// What the selected button does and what it can do instead, laid out like G HUB's
+// assignments: the current action, category tabs with icons, and a grid of action
+// tiles. Keyboard shortcuts are recorded from the keys the user presses.
 Item {
   id: inspector
 
@@ -14,12 +15,20 @@ Item {
   property bool recording: false
   property string recordingHint: ""
   property string query: ""
+  // "All" or one of the catalog's groups.
+  property string group: "All"
 
   signal chosen(string action)
   signal reverted()
 
   readonly property int slot: entry ? entry.slot : -1
-  readonly property var rows: Model.actionRows(Model.actionSections(catalog, query))
+  readonly property bool searching: query.trim() !== ""
+  readonly property var groups: ["All"].concat(Model.actionGroups(catalog))
+  readonly property var sections: Model.actionSections(catalog, query).filter(function(section) {
+    return inspector.searching || inspector.group === "All" || section.group === inspector.group
+  })
+  readonly property int tileColumns: 2
+  readonly property real tileWidth: (width - Style.spacing.sm * (tileColumns - 1)) / tileColumns
 
   function startRecording() {
     inspector.recordingHint = "Press the shortcut"
@@ -50,6 +59,13 @@ Item {
     width: parent.width
     spacing: Style.spacing.md
     visible: inspector.entry === null
+
+    Icon {
+      anchors.horizontalCenter: parent.horizontalCenter
+      name: "mouse-pointer-click"
+      size: Style.space(40)
+      opacity: 0.5
+    }
 
     Label {
       width: parent.width
@@ -89,7 +105,7 @@ Item {
       Label {
         width: parent.width
         opacity: 0.6
-        text: inspector.entry && inspector.entry.changed ? "Changed, not on the mouse yet" : "As saved on the mouse"
+        text: inspector.entry && inspector.entry.changed ? "Changed, saving to the mouse" : "As saved on the mouse"
         font.pixelSize: Style.font.caption
       }
     }
@@ -97,14 +113,24 @@ Item {
     // The current action.
     Rectangle {
       width: parent.width
-      height: Style.spacing.controlHeight + Style.spacing.md * 2
+      height: Style.space(56)
       radius: Style.cornerRadius
       color: Util.alpha(Color.accent, 0.1)
       border.width: Math.max(1, Style.normalBorderWidth)
       border.color: Util.alpha(Color.accent, 0.5)
 
-      Column {
+      Icon {
+        id: currentIcon
         anchors.left: parent.left
+        anchors.leftMargin: Style.spacing.md
+        anchors.verticalCenter: parent.verticalCenter
+        name: inspector.entry ? Model.actionIcon(inspector.entry.action) : ""
+        tint: Color.accent
+        size: Style.space(24)
+      }
+
+      Column {
+        anchors.left: currentIcon.right
         anchors.right: revert.left
         anchors.leftMargin: Style.spacing.md
         anchors.rightMargin: Style.spacing.sm
@@ -151,11 +177,22 @@ Item {
         width: parent.width - Style.spacing.md * 2
         spacing: Style.spacing.sm
 
-        Label {
-          width: parent.width
-          horizontalAlignment: Text.AlignHCenter
-          text: inspector.recordingHint
-          font.pixelSize: Style.font.title
+        Row {
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: Style.spacing.sm
+
+          Icon {
+            anchors.verticalCenter: parent.verticalCenter
+            name: "keyboard"
+            tint: Color.accent
+            size: Style.space(22)
+          }
+
+          Label {
+            anchors.verticalCenter: parent.verticalCenter
+            text: inspector.recordingHint
+            font.pixelSize: Style.font.title
+          }
         }
 
         Label {
@@ -181,6 +218,48 @@ Item {
       placeholderText: "Search actions"
       foreground: Color.menu.text
       onTextChanged: inspector.query = text
+    }
+
+    // Category tabs.
+    Row {
+      spacing: Style.spacing.xs
+      visible: !inspector.recording && !inspector.searching
+
+      Repeater {
+        model: inspector.groups
+
+        delegate: Rectangle {
+          id: tab
+          required property string modelData
+          readonly property bool selected: inspector.group === modelData
+          width: Math.floor((header.width - Style.spacing.xs * (inspector.groups.length - 1)) / inspector.groups.length)
+          height: Style.space(34)
+          radius: Style.cornerRadius
+          color: selected ? Util.alpha(Color.accent, 0.18) : (tabArea.containsMouse ? Util.alpha(Color.menu.text, 0.08) : "transparent")
+          border.width: Math.max(1, Style.normalBorderWidth)
+          border.color: selected ? Color.accent : Util.alpha(Color.menu.text, 0.14)
+
+          Icon {
+            anchors.centerIn: parent
+            name: tab.modelData === "All" ? "layout-grid" : Model.groupIcon(tab.modelData)
+            tint: tab.selected ? Color.accent : Color.menu.text
+            size: Style.space(18)
+          }
+
+          MouseArea {
+            id: tabArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: inspector.group = tab.modelData
+          }
+
+          PanelToolTip {
+            visible: tabArea.containsMouse
+            text: tab.modelData
+          }
+        }
+      }
     }
   }
 
@@ -210,7 +289,7 @@ Item {
     }
   }
 
-  ListView {
+  Flickable {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: header.bottom
@@ -219,66 +298,94 @@ Item {
     visible: inspector.entry !== null && !inspector.recording
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    model: inspector.rows
+    contentWidth: width
+    contentHeight: tiles.height
 
-    delegate: Item {
-      id: row
-      required property var modelData
-      readonly property bool isHeader: modelData.kind === "header"
-      readonly property bool current: !isHeader && inspector.entry !== null
-        && Model.actionChoice(inspector.entry.action) === modelData.value
-
-      width: ListView.view.width
-      height: isHeader ? Style.font.caption + Style.spacing.md * 2 : Style.spacing.controlHeight
+    Column {
+      id: tiles
+      width: parent.width
+      spacing: Style.spacing.md
 
       Label {
-        visible: row.isHeader
-        anchors.left: parent.left
-        anchors.leftMargin: Style.spacing.md
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: Style.spacing.xs
-        opacity: 0.55
-        text: row.isHeader ? row.modelData.group : ""
-        font.pixelSize: Style.font.caption
+        visible: inspector.sections.length === 0
+        width: parent.width
+        horizontalAlignment: Text.AlignHCenter
+        opacity: 0.6
+        text: "No actions match"
       }
 
-      Rectangle {
-        visible: !row.isHeader
-        anchors.fill: parent
-        radius: Style.cornerRadius
-        color: hover.containsMouse
-          ? Util.alpha(Color.menu.text, 0.08)
-          : (row.current ? Util.alpha(Color.accent, 0.12) : "transparent")
+      Repeater {
+        model: inspector.sections
 
-        Label {
-          anchors.left: parent.left
-          anchors.right: check.left
-          anchors.leftMargin: Style.spacing.md
-          anchors.rightMargin: Style.spacing.sm
-          anchors.verticalCenter: parent.verticalCenter
-          text: row.isHeader ? "" : row.modelData.label
-          color: row.current ? Color.accent : Color.menu.text
-        }
+        delegate: Column {
+          id: section
+          required property var modelData
+          width: tiles.width
+          spacing: Style.spacing.xs
 
-        Label {
-          id: check
-          anchors.right: parent.right
-          anchors.rightMargin: Style.spacing.md
-          anchors.verticalCenter: parent.verticalCenter
-          visible: row.current
-          text: "󰄬"
-          color: Color.accent
-          font.family: Style.font.family
-        }
+          Label {
+            visible: inspector.group === "All" || inspector.searching
+            opacity: 0.55
+            text: section.modelData.group
+            font.pixelSize: Style.font.caption
+          }
 
-        MouseArea {
-          id: hover
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: {
-            if (row.modelData.value === "key:") inspector.startRecording()
-            else inspector.chosen(row.modelData.value)
+          Flow {
+            width: parent.width
+            spacing: Style.spacing.sm
+
+            Repeater {
+              model: section.modelData.actions
+
+              delegate: Rectangle {
+                id: tile
+                required property var modelData
+                readonly property bool current: inspector.entry !== null
+                  && Model.actionChoice(inspector.entry.action) === modelData.value
+                width: inspector.tileWidth
+                height: Style.space(52)
+                radius: Style.cornerRadius
+                color: current
+                  ? Util.alpha(Color.accent, 0.16)
+                  : Util.alpha(Color.menu.text, tileArea.containsMouse ? 0.09 : 0.035)
+                border.width: current ? Math.max(2, Style.normalBorderWidth) : Math.max(1, Style.normalBorderWidth)
+                border.color: current ? Color.accent : Util.alpha(Color.menu.text, tileArea.containsMouse ? 0.35 : 0.12)
+
+                Icon {
+                  id: tileIcon
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.spacing.md
+                  anchors.verticalCenter: parent.verticalCenter
+                  name: Model.actionIcon(tile.modelData.value)
+                  tint: tile.current ? Color.accent : Color.menu.text
+                  size: Style.space(20)
+                }
+
+                Label {
+                  anchors.left: tileIcon.right
+                  anchors.right: parent.right
+                  anchors.leftMargin: Style.spacing.sm
+                  anchors.rightMargin: Style.spacing.sm
+                  anchors.verticalCenter: parent.verticalCenter
+                  wrapMode: Text.Wrap
+                  maximumLineCount: 2
+                  text: tile.modelData.value === "key:" ? "Record a shortcut…" : tile.modelData.label
+                  color: tile.current ? Color.accent : Color.menu.text
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  id: tileArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    if (tile.modelData.value === "key:") inspector.startRecording()
+                    else inspector.chosen(tile.modelData.value)
+                  }
+                }
+              }
+            }
           }
         }
       }

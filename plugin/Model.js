@@ -310,6 +310,57 @@ function comboLabel(combo) {
     .join("+")
 }
 
+// ---- Icons -----------------------------------------------------------------
+// Icon names from Icons.js for actions and their groups.
+
+var ACTION_ICONS = {
+  left: "mouse-left",
+  right: "mouse-right",
+  middle: "mouse",
+  back: "circle-arrow-left",
+  forward: "circle-arrow-right",
+  "dpi-up": "gauge",
+  "dpi-down": "gauge",
+  "dpi-cycle": "gauge",
+  "dpi-default": "gauge",
+  "dpi-shift": "gauge",
+  gshift: "layers",
+  "profile-next": "square-arrow-right",
+  "profile-previous": "square-arrow-left",
+  "profile-cycle": "refresh-cw",
+  "scroll-left": "chevrons-left",
+  "scroll-right": "chevrons-right",
+  "scroll-up": "chevrons-up",
+  "scroll-down": "chevrons-down",
+  "media:play-pause": "play",
+  "media:next-track": "skip-forward",
+  "media:previous-track": "skip-back",
+  "media:volume-up": "volume-2",
+  "media:volume-down": "volume-1",
+  "media:mute": "volume-x",
+  disabled: "ban"
+}
+
+var GROUP_ICONS = {
+  Mouse: "mouse",
+  Keyboard: "keyboard",
+  Media: "play",
+  DPI: "gauge",
+  Profiles: "layers",
+  Scroll: "move",
+  Other: "settings"
+}
+
+function actionIcon(action) {
+  if (isKeyAction(action)) return "keyboard"
+  if (typeof action === "string" && action.indexOf("button:") === 0) return "mouse"
+  return ACTION_ICONS[action] || "mouse-pointer-click"
+}
+
+function groupIcon(group) {
+  return GROUP_ICONS[group] || "layout-grid"
+}
+
 // ---- Action picker ---------------------------------------------------------
 
 var GROUP_ORDER = ["Mouse", "Keyboard", "Media", "DPI", "Profiles", "Scroll", "Other"]
@@ -334,6 +385,11 @@ function actionSections(catalog, query) {
     if (actions.length > 0) sections.push({ group: group, actions: actions })
   })
   return sections
+}
+
+// The catalog's groups in display order.
+function actionGroups(catalog) {
+  return actionSections(catalog, "").map(function(section) { return section.group })
 }
 
 // ---- Device canvas ---------------------------------------------------------
@@ -502,6 +558,65 @@ function positionToDpi(position, bounds) {
   var raw = bounds.min * Math.pow(bounds.max / bounds.min, position / SLIDER_STEPS)
   var snapped = Math.round(raw / bounds.step) * bounds.step
   return Math.max(bounds.min, Math.min(bounds.max, snapped))
+}
+
+// ---- DPI bar ---------------------------------------------------------------
+// DPI levels on one logarithmic bar, as G HUB draws them. Levels are kept from low to
+// high, the order the DPI buttons step through.
+
+function dpiFraction(dpi, bounds) {
+  return dpiToPosition(dpi, bounds) / SLIDER_STEPS
+}
+
+function dpiAtFraction(fraction, bounds) {
+  return positionToDpi(Math.max(0, Math.min(1, fraction)) * SLIDER_STEPS, bounds)
+}
+
+// One node per level: {index, dpi, fraction, isDefault, isShift}.
+function dpiNodes(draft, bounds) {
+  return draft.dpiStages.map(function(dpi, index) {
+    return {
+      index: index,
+      dpi: dpi,
+      fraction: dpiFraction(dpi, bounds),
+      isDefault: dpi === draft.defaultDpi,
+      isShift: dpi === draft.shiftDpi
+    }
+  })
+}
+
+// Tick marks: doublings from the sensor's lowest DPI, and its highest.
+function dpiTicks(bounds) {
+  var ticks = []
+  for (var dpi = bounds.min; dpi <= bounds.max; dpi *= 2) ticks.push(dpi)
+  if (ticks[ticks.length - 1] !== bounds.max) ticks.push(bounds.max)
+  return ticks.map(function(value) { return { dpi: value, fraction: dpiFraction(value, bounds) } })
+}
+
+function sortStages(draft) {
+  var next = copyDraft(draft)
+  next.dpiStages.sort(function(a, b) { return a - b })
+  return next
+}
+
+// Adds a level where it belongs in the order; at most five.
+function insertStage(draft, dpi) {
+  if (draft.dpiStages.length >= 5) return draft
+  return sortStages(addStage(draft, dpi))
+}
+
+// Removes a level. When it was the default or DPI shift level, the nearest remaining
+// level takes that role, so a profile is never left without one.
+function removeStageKeepingRoles(draft, index) {
+  var removed = draft.dpiStages[index]
+  var next = removeStage(draft, index)
+  if (next.dpiStages.length === 0) return next
+  var nearest = next.dpiStages.reduce(function(best, dpi) {
+    return Math.abs(dpi - removed) < Math.abs(best - removed) ? dpi : best
+  })
+  if (next.defaultDpi === null) next.defaultDpi = nearest
+  if (next.shiftDpi === null) next.shiftDpi = nearest
+  return next
 }
 
 // ---- Saving through `omalogi serve` ----------------------------------------

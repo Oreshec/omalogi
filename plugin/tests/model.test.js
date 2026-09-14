@@ -6,16 +6,38 @@ const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
 
-function loadModel() {
+function loadLibrary(file) {
   const source = fs
-    .readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
+    .readFileSync(path.join(__dirname, "..", file), "utf8")
     .replace(/^\.pragma library\s*$/m, "")
-  const context = vm.createContext({})
+  const context = vm.createContext({ encodeURIComponent })
   vm.runInContext(source, context)
   return context
 }
 
-const Model = loadModel()
+const Model = loadLibrary("Model.js")
+const Icons = loadLibrary("Icons.js")
+
+test("every icon the model names exists, and icons take the theme color", () => {
+  const catalogValues = [
+    "left", "right", "middle", "back", "forward", "button:7", "dpi-up", "dpi-down", "dpi-cycle",
+    "dpi-default", "dpi-shift", "gshift", "profile-next", "profile-previous", "profile-cycle",
+    "scroll-left", "scroll-right", "scroll-up", "scroll-down", "media:play-pause", "media:next-track",
+    "media:previous-track", "media:volume-up", "media:volume-down", "media:mute", "disabled",
+    "key:ctrl+t", "key:", "something-new"
+  ]
+  for (const action of catalogValues) {
+    assert.ok(Icons.SVG[Model.actionIcon(action)] !== undefined, `icon for ${action}`)
+  }
+  for (const group of ["Mouse", "Keyboard", "Media", "DPI", "Profiles", "Scroll", "Other", "Unknown"]) {
+    assert.ok(Icons.SVG[Model.groupIcon(group)] !== undefined, `icon for ${group}`)
+  }
+  assert.equal(Icons.source("no-such-icon", "#ffffff"), "")
+  const source = decodeURIComponent(Icons.source("gauge", { r: 1, g: 0.5, b: 0 }))
+  assert.ok(source.startsWith("data:image/svg+xml;utf8,<svg"), source.slice(0, 40))
+  assert.ok(source.includes('stroke="#ff8000"'), "the color replaces currentColor")
+  assert.ok(!source.includes("%COLOR%"))
+})
 
 function slot(overrides) {
   return {
@@ -363,6 +385,7 @@ test("actionSections groups in display order and filters", () => {
     ["Keyboard"]
   )
   assert.deepEqual(plain(Model.actionSections(catalog, "nothing like this")), [])
+  assert.deepEqual(plain(Model.actionGroups(catalog)), ["Mouse", "Keyboard", "Media", "DPI", "Extra"])
 })
 
 test("calloutLayout puts cards beside their buttons without overlap", () => {
@@ -493,4 +516,39 @@ test("withSlot and withActive update profiles without a full read", () => {
   assert.deepEqual(switched.profiles.map((slot) => slot.active), [false, false, true])
   assert.equal(switched.active_position, 2)
   assert.equal(onboard.profiles[0].active, true, "the original is not mutated")
+})
+
+test("the DPI bar places levels, ticks and roles", () => {
+  const bounds = { min: 100, max: 25600, step: 50 }
+  const draft = Model.draftFromSlot(editableSlot())
+  const nodes = plain(Model.dpiNodes(draft, bounds))
+  assert.deepEqual(nodes.map((node) => node.dpi), [800, 1200, 1600, 2400, 3200])
+  assert.equal(nodes[2].isDefault, true)
+  assert.equal(nodes[0].isShift, true)
+  assert.equal(nodes[2].fraction, 0.5)
+  assert.deepEqual(
+    plain(Model.dpiTicks(bounds)).map((tick) => tick.dpi),
+    [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600]
+  )
+  assert.deepEqual(plain(Model.dpiTicks({ min: 200, max: 12000, step: 50 })).map((tick) => tick.dpi).slice(-2), [6400, 12000])
+  assert.equal(Model.dpiAtFraction(0.5, bounds), 1600)
+  assert.equal(Model.dpiAtFraction(-1, bounds), 100)
+})
+
+test("levels stay in order and keep their roles", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  const four = Model.removeStage(original, 4)
+  assert.deepEqual(plain(Model.insertStage(four, 1000).dpiStages), [800, 1000, 1200, 1600, 2400])
+  assert.equal(Model.insertStage(original, 1000), original, "at most five levels")
+  // Dragging level 1 past level 3 re-sorts; the default keeps its DPI value.
+  const moved = Model.sortStages(Model.setStage(original, 0, 2000))
+  assert.deepEqual(plain(moved.dpiStages), [1200, 1600, 2000, 2400, 3200])
+  assert.equal(moved.defaultDpi, 1600)
+  assert.equal(moved.shiftDpi, 2000, "shift followed its level")
+  // Removing the default level hands the role to the nearest level.
+  const removed = Model.removeStageKeepingRoles(original, 2)
+  assert.deepEqual(plain(removed.dpiStages), [800, 1200, 2400, 3200])
+  assert.equal(removed.defaultDpi, 1200)
+  assert.equal(removed.shiftDpi, 800)
+  assert.equal(Model.draftProblem(removed), "")
 })
