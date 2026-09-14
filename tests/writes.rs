@@ -424,6 +424,29 @@ async fn restoring_the_active_profile_loads_it() {
 }
 
 #[tokio::test]
+async fn a_profile_that_reads_back_corrupt_is_never_edited() {
+    let mut h = Harness::new("corrupt-read").await;
+    h.state
+        .lock()
+        .expect("state")
+        .sectors
+        .get_mut(&1)
+        .expect("sector 1")[40] ^= 0xFF;
+
+    let result = h
+        .session
+        .apply_profile_changes(1, &rate(500), &h.backup_path("before"))
+        .await;
+
+    assert!(
+        matches!(result, Err(EditError::CorruptSector { sector: 1 })),
+        "{result:?}"
+    );
+    assert_eq!(h.write_requests(), 0);
+    assert!(!h.backup_path("before").exists());
+}
+
+#[tokio::test]
 async fn refuses_backups_that_do_not_fit() {
     let mut h = Harness::new("mismatch").await;
     let good = h.backup_path("good");

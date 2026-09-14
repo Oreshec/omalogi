@@ -6,9 +6,10 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Omalogi's overlay: the connected mouse's onboard profiles, edited the way G HUB does
-// it. Every device read and write goes through the omalogi CLI, one command at a time
-// (they share a HID++ software id), so the plugin never touches the device itself.
+// Omalogi's overlay: the connected mouse's onboard profiles, edited the way G HUB does it.
+// Changes save themselves a moment after the last edit, through one long-lived
+// `omalogi serve` that keeps the mouse open. Every write is backed up and verified, and
+// Undo puts back what a write replaced.
 Item {
   id: root
 
@@ -32,32 +33,33 @@ Item {
 
   // "buttons", "gshift" or "sensitivity".
   property string tab: "buttons"
-  // The selected profile as read from the mouse, and with the unsaved edits.
+  // The selected profile as the mouse has it, and with the edits not saved yet.
   property var original: null
   property var draft: null
   property int selectedSlot: -1
   property int hoveredSlot: -1
-  // Set by a write, so the next profile read replaces the draft.
-  property bool reloadDraft: false
   // What the open payload asked for, applied once profiles have loaded.
   property var pendingOpen: null
 
-  // The open confirmation: "apply", "switch" (to `pendingCursor`), "close", or "".
-  property string confirmMode: ""
+  property bool loading: false
+  // At most one write is in flight; edits made meanwhile are saved after it.
+  property bool saving: false
+  property bool undoing: false
+  // Saved writes this session that Undo can put back.
+  property int undoDepth: 0
+  // A profile to select once the write in flight is done.
   property int pendingCursor: -1
-  property string previewText: ""
-  property string applyError: ""
+  // Changes the mouse turned out to have already, so they are not sent again.
+  property string unchangedChanges: ""
 
   readonly property var profiles: root.onboard ? root.onboard.profiles : []
   readonly property var selected: root.profiles.length > 0
     ? root.profiles[Model.clampCursor(root.cursor, root.profiles.length)]
     : null
-  // Device commands only; they must never overlap.
-  readonly property bool busy: infoCommand.running || profilesCommand.running || activateCommand.running
-    || previewCommand.running || saveCommand.running
   readonly property bool ready: root.info !== null && root.onboard !== null
   readonly property int changes: Model.changeCount(root.draft, root.original)
   readonly property bool dirty: root.changes > 0
+  readonly property string problem: root.draft ? Model.draftProblem(root.draft) : ""
   readonly property var views: Model.pictureViews(root.picture)
   readonly property bool slotsVerified: root.picture !== null && root.picture.slots_verified === true
   readonly property int buttonCount: root.onboard ? root.onboard.description.button_count : 0
@@ -69,7 +71,6 @@ Item {
     return entry === undefined ? null : entry
   }
   readonly property bool anyDisabled: root.profiles.some(function(slot) { return !slot.enabled })
-  readonly property string unreadable: "omalogi answered with output Omalogi could not read."
 
   readonly property int cardWidth: Math.min(Style.space(1400), panel.width - Style.gapsOut * 2)
   readonly property int cardHeight: Math.min(Style.space(820), panel.height - Style.gapsOut * 2)
@@ -92,10 +93,8 @@ Item {
 
   function close() {
     if (!root.mounted || !root.opened) return
-    if (root.dirty) {
-      root.ask("close")
-      return
-    }
+    // Edits waiting for the timer are saved now; the save finishes after the overlay closes.
+    root.saveNow()
     root.opened = false
     enterAnimation.stop()
     exitAnimation.restart()
@@ -103,22 +102,47 @@ Item {
 
   function finishClose() {
     root.mounted = false
-    root.confirmMode = ""
     root.selectedSlot = -1
+    root.stopServerWhenIdle()
     if (root.shell && root.manifest) root.shell.hide(root.manifest.id)
   }
 
+  // The server keeps the mouse open; it stops once the overlay is closed and idle.
+  function stopServerWhenIdle() {
+    if (!root.opened && server.inFlight === 0 && !saveTimer.running) server.stop()
+  }
+
   function refresh() {
-    if (root.busy) return
+    if (root.loading) return
+    root.loading = true
     root.loadError = ""
-    infoCommand.start(["info", "--json"])
+    server.request({ cmd: "state" }, function(ok, result) {
+      root.loading = false
+      if (!ok) {
+        root.failLoad(result)
+        return
+      }
+      var first = root.onboard === null
+      root.info = result.info
+      root.onboard = result.onboard
+      if (first) root.cursor = Model.initialCursor(result.onboard)
+      if (first || (!root.dirty && !root.saving && !root.undoing)) root.loadDraft()
+      Qt.callLater(root.applyOpenRequest)
+      root.stopServerWhenIdle()
+    })
+  }
+
+  function retry() {
+    server.stop()
+    root.loadError = ""
+    root.refresh()
   }
 
   function applyOpenRequest() {
     var request = root.pendingOpen
     if (request === null || !root.ready) return
     root.pendingOpen = null
-    if (request.profile !== null) root.selectProfile(request.profile - 1, true)
+    if (request.profile !== null) root.selectProfile(request.profile - 1)
     if (request.tab !== null) root.tab = request.tab
     if (request.button !== null) root.selectedSlot = request.button
   }
@@ -126,90 +150,153 @@ Item {
   function loadDraft() {
     root.original = root.selected ? Model.draftFromSlot(root.selected) : null
     root.draft = root.original
-    root.applyError = ""
+    root.unchangedChanges = ""
   }
 
-  // Selects a profile. Unsaved edits ask first, unless `discard` is set.
-  function selectProfile(index, discard) {
+  // Selects a profile, saving the current one's edits first.
+  function selectProfile(index) {
     var next = Model.clampCursor(index, root.profiles.length)
     if (next === root.cursor && root.draft !== null) return
-    if (root.dirty && !discard) {
+    saveTimer.stop()
+    if (root.saving || root.undoing || root.save()) {
       root.pendingCursor = next
-      root.ask("switch")
       return
+    }
+    if (root.dirty && root.problem !== "") {
+      root.say("Changes to profile " + root.draft.number + " were not saved: " + root.problem, true)
     }
     root.cursor = next
     root.loadDraft()
   }
 
-  function ask(mode) {
-    root.confirmMode = mode
-    keyCatcher.forceActiveFocus()
-  }
-
-  function confirm() {
-    var mode = root.confirmMode
-    root.confirmMode = ""
-    keyCatcher.forceActiveFocus()
-    if (mode === "apply") {
-      root.write()
-    } else if (mode === "switch") {
-      root.revertAll()
-      root.selectProfile(root.pendingCursor, true)
-    } else if (mode === "close") {
-      root.revertAll()
-      root.close()
-    }
-  }
-
-  function updateDraft(next) {
+  // `immediate` edits (a pick, a click, a released slider) save almost at once; typed
+  // values wait for a pause so each keystroke is not a write.
+  function updateDraft(next, immediate) {
     root.draft = next
-    root.applyError = ""
-  }
-
-  function revertAll() {
-    root.draft = root.original
-    root.applyError = ""
+    root.say("", false)
+    if (!root.dirty) {
+      saveTimer.stop()
+      return
+    }
+    saveTimer.interval = immediate ? 120 : 700
+    saveTimer.restart()
   }
 
   function choose(action) {
     if (!root.draft || root.selectedSlot < 0) return
-    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, action))
+    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, action), true)
   }
 
   function revertSlot() {
     if (!root.draft || root.selectedSlot < 0) return
     var saved = root.original[root.table][root.selectedSlot]
-    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, saved))
+    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, saved), true)
   }
 
-  // Apply: a dry run of exactly these changes, shown in the confirmation, then the write.
-  function apply() {
-    if (!root.dirty || root.busy) return
-    var problem = Model.draftProblem(root.draft)
-    if (problem !== "") {
-      root.applyError = problem
+  function saveNow() {
+    if (!saveTimer.running) return
+    saveTimer.stop()
+    root.save()
+  }
+
+  // Sends the unsaved edits. Returns true when a write was started or is already coming.
+  function save() {
+    if (!root.draft || !root.original || !root.dirty) return false
+    if (root.problem !== "") {
+      root.say(root.problem, true)
+      return false
+    }
+    if (root.saving || root.undoing) {
+      saveTimer.restart()
+      return true
+    }
+    var changes = Model.serveChanges(root.draft, root.original)
+    var key = root.draft.number + ":" + JSON.stringify(changes)
+    if (key === root.unchangedChanges) return false
+    root.saving = true
+    server.request(Object.assign({ cmd: "apply", profile: root.draft.number }, changes), function(ok, result) {
+      root.saving = false
+      if (ok) {
+        root.onboard = Model.withSlot(root.onboard, result.slot)
+        root.undoDepth = result.undo
+        if (result.takes_effect === null) root.unchangedChanges = key
+        // The edits made while saving stay in the draft and save next.
+        if (root.draft && root.draft.number === result.slot.position + 1) {
+          root.original = Model.draftFromSlot(result.slot)
+        }
+        var status = Model.saveStatus(result, false)
+        root.say(status.text, status.isError)
+      } else {
+        root.say("Not saved: " + result, true)
+      }
+      root.afterWrite(ok)
+    })
+    return true
+  }
+
+  function undo() {
+    if (root.saving || root.undoing) return
+    saveTimer.stop()
+    // The latest change is one not saved yet: drop it without touching the mouse.
+    if (root.dirty) {
+      root.draft = root.original
+      root.say("Undid the changes that were not saved yet.", false)
       return
     }
-    root.applyError = ""
-    previewCommand.start(Model.editArgs(root.draft, root.original, true))
+    if (root.undoDepth === 0) return
+    root.undoing = true
+    server.request({ cmd: "undo" }, function(ok, result) {
+      root.undoing = false
+      if (ok) {
+        root.onboard = Model.withSlot(root.onboard, result.slot)
+        root.undoDepth = result.undo
+        root.unchangedChanges = ""
+        if (root.draft && root.draft.number === result.slot.position + 1) {
+          root.original = Model.draftFromSlot(result.slot)
+          root.draft = root.original
+        }
+        var status = Model.saveStatus(result, true)
+        root.say(status.text, status.isError)
+      } else {
+        root.say("Undo failed: " + result, true)
+      }
+      root.afterWrite(ok)
+    })
   }
 
-  function write() {
-    if (!root.dirty || root.busy) return
-    saveCommand.start(Model.editArgs(root.draft, root.original, false).concat(["--json"]))
+  function afterWrite(ok) {
+    var more = ok && root.dirty && root.problem === ""
+    if (more && root.opened && root.pendingCursor < 0) {
+      saveTimer.restart()
+      return
+    }
+    if (more && root.save()) return
+    if (root.pendingCursor >= 0) {
+      var next = root.pendingCursor
+      root.pendingCursor = -1
+      root.cursor = next
+      root.loadDraft()
+    }
+    root.stopServerWhenIdle()
   }
 
   function activate() {
     var slot = root.selected
-    if (!slot || root.busy) return
+    if (!slot) return
     var refusal = Model.activationRefusal(slot)
     if (refusal !== "") {
       root.say(refusal, false)
       return
     }
-    root.say("", false)
-    activateCommand.start(["profiles", "activate", String(slot.position + 1), "--json"])
+    var position = slot.position
+    server.request({ cmd: "activate", profile: position + 1 }, function(ok, result) {
+      if (!ok) {
+        root.say(result, true)
+        return
+      }
+      root.onboard = Model.withActive(root.onboard, position)
+      root.say("Profile " + (position + 1) + " is now in use.", false)
+    })
   }
 
   function hoverSlot(slot, hovered) {
@@ -231,58 +318,29 @@ Item {
   function daemonUpdated(state) {
     var previous = root.daemon
     root.daemon = state
-    // The daemon switched profiles while the overlay is open: show the new active one.
-    var switched = state !== null && (previous === null || previous.active_profile !== state.active_profile)
-    if (root.opened && root.ready && switched && !root.busy) profilesCommand.start(["profiles", "--json"])
+    // The daemon switched profiles: its state names the new one, so no read is needed.
+    var switched = state !== null && state.active_profile !== null
+      && (previous === null || previous.active_profile !== state.active_profile)
+    if (root.ready && switched) root.onboard = Model.withActive(root.onboard, state.active_profile - 1)
   }
 
-  OmalogiCommand {
-    id: infoCommand
-    onFinished: function(exitCode, stdout, stderr) {
-      var parsed = exitCode === 0 ? Model.parseJson(stdout) : null
-      if (parsed === null) {
-        root.failLoad(exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode))
-        return
-      }
-      root.info = parsed
-      profilesCommand.start(["profiles", "--json"])
+  OmalogiServer {
+    id: server
+    onFailed: function(message) {
+      root.loading = false
+      root.saving = false
+      root.undoing = false
+      root.failLoad(message)
     }
   }
 
-  OmalogiCommand {
-    id: profilesCommand
-    onFinished: function(exitCode, stdout, stderr) {
-      var parsed = exitCode === 0 ? Model.parseJson(stdout) : null
-      if (parsed === null) {
-        root.failLoad(exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode))
-        return
-      }
-      var first = root.onboard === null
-      root.onboard = parsed
-      if (first) root.cursor = Model.initialCursor(parsed)
-      // Unsaved edits survive a refresh; a write replaces them with what the mouse has.
-      if (first || root.reloadDraft || !root.dirty) {
-        root.reloadDraft = false
-        root.loadDraft()
-      }
-      Qt.callLater(root.applyOpenRequest)
-    }
+  Timer {
+    id: saveTimer
+    interval: 700
+    onTriggered: root.save()
   }
 
-  OmalogiCommand {
-    id: activateCommand
-    onFinished: function(exitCode, stdout, stderr) {
-      var result = exitCode === 0 ? Model.parseJson(stdout) : null
-      if (result === null) {
-        root.say(exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode), true)
-      } else {
-        root.say("Profile " + result.active_profile + " is now active.", false)
-      }
-      profilesCommand.start(["profiles", "--json"])
-    }
-  }
-
-  // Needs no device, so it may run alongside device commands.
+  // Needs no device, so it runs as its own command.
   OmalogiCommand {
     id: catalogCommand
     onFinished: function(exitCode, stdout, stderr) {
@@ -298,33 +356,6 @@ Item {
     id: pictureCommand
     onFinished: function(exitCode, stdout, stderr) {
       root.picture = exitCode === 0 ? Model.parseJson(stdout) : null
-    }
-  }
-
-  OmalogiCommand {
-    id: previewCommand
-    onFinished: function(exitCode, stdout, stderr) {
-      if (exitCode !== 0) {
-        root.applyError = Model.errorMessage(stderr, exitCode)
-        return
-      }
-      root.previewText = stdout.trim()
-      root.ask("apply")
-    }
-  }
-
-  OmalogiCommand {
-    id: saveCommand
-    onFinished: function(exitCode, stdout, stderr) {
-      var report = exitCode === 0 ? Model.parseJson(stdout) : null
-      if (report !== null) {
-        root.reloadDraft = true
-        var notice = Model.savedNotice(report)
-        root.say(notice.text, notice.isError)
-      } else {
-        root.applyError = exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode)
-      }
-      profilesCommand.start(["profiles", "--json"])
     }
   }
 
@@ -403,20 +434,19 @@ Item {
         focus: true
 
         Keys.onPressed: function(event) {
-          if (confirmDialog.handleKey(event)) {
-            event.accepted = true
-            return
-          }
           var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
           if (event.key === Qt.Key_Escape) {
             if (root.selectedSlot >= 0) root.selectedSlot = -1
             else root.close()
+          } else if (ctrl && event.key === Qt.Key_Z) {
+            root.undo()
           } else if (ctrl && event.key === Qt.Key_S) {
-            root.apply()
+            saveTimer.stop()
+            root.save()
           } else if (event.key === Qt.Key_Down || event.text === "j") {
-            root.selectProfile(root.cursor + 1, false)
+            root.selectProfile(root.cursor + 1)
           } else if (event.key === Qt.Key_Up || event.text === "k") {
-            root.selectProfile(root.cursor - 1, false)
+            root.selectProfile(root.cursor - 1)
           } else if (event.text === "1") {
             root.tab = "buttons"
           } else if (event.text === "2") {
@@ -425,7 +455,7 @@ Item {
             root.tab = "sensitivity"
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.activate()
-          } else if (event.text === "r" && !root.dirty) {
+          } else if (event.text === "r" && !root.dirty && !root.saving) {
             root.refresh()
           } else {
             return
@@ -468,7 +498,7 @@ Item {
           }
         }
 
-        // ---- Footer -----------------------------------------------------
+        // ---- Footer: save status and Undo -------------------------------
         Item {
           id: footer
           anchors.left: parent.left
@@ -485,7 +515,7 @@ Item {
 
             Rectangle {
               anchors.verticalCenter: parent.verticalCenter
-              visible: root.dirty && root.applyError === ""
+              visible: root.saving || root.undoing || saveTimer.running
               width: Style.space(8)
               height: width
               radius: width / 2
@@ -496,14 +526,13 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(20)
               readonly property string daemonProblem: Model.daemonProblem(root.daemon)
-              text: root.applyError !== ""
-                ? root.applyError
-                : root.dirty
-                  ? root.changes + (root.changes === 1 ? " unsaved change" : " unsaved changes")
-                    + " to profile " + (root.draft ? root.draft.number : "")
-                  : (root.notice !== "" ? root.notice : daemonProblem)
-              color: root.applyError !== "" || (!root.dirty && root.notice !== "" && root.noticeIsError)
-                || (!root.dirty && root.notice === "" && daemonProblem !== "")
+              readonly property bool busy: root.saving || root.undoing || saveTimer.running
+              text: root.saving ? "Saving…"
+                : root.undoing ? "Undoing…"
+                : saveTimer.running ? "Saving in a moment…"
+                : root.notice !== "" ? root.notice
+                : daemonProblem
+              color: !busy && ((root.notice !== "" && root.noticeIsError) || (root.notice === "" && daemonProblem !== ""))
                 ? Color.urgent : Color.menu.text
             }
           }
@@ -516,31 +545,21 @@ Item {
 
             Label {
               anchors.verticalCenter: parent.verticalCenter
-              visible: !root.dirty
               opacity: 0.55
-              text: "↑↓ profile    1 2 3 view    ⏎ activate    r refresh    esc close"
+              text: "↑↓ profile    1 2 3 view    ⏎ activate    ctrl+z undo    esc close"
               font.pixelSize: Style.font.caption
             }
 
             Button {
-              visible: root.dirty
-              text: "Revert"
+              visible: root.undoDepth > 0 || root.dirty
+              text: "Undo"
+              iconText: "󰕌"
               bordered: true
-              enabled: !saveCommand.running
+              enabled: !root.saving && !root.undoing
+              opacity: enabled ? 1 : 0.5
               foreground: Color.menu.text
               fontFamily: Style.font.menuFamily
-              onClicked: root.revertAll()
-            }
-
-            Button {
-              visible: root.dirty
-              text: previewCommand.running ? "Checking…" : (saveCommand.running ? "Writing…" : "Apply to mouse")
-              bordered: true
-              active: true
-              enabled: !root.busy
-              foreground: Color.menu.text
-              fontFamily: Style.font.menuFamily
-              onClicked: root.apply()
+              onClicked: root.undo()
             }
           }
         }
@@ -582,7 +601,7 @@ Item {
               text: "Try again"
               bordered: true
               foreground: Color.menu.text
-              onClicked: root.refresh()
+              onClicked: root.retry()
             }
           }
 
@@ -617,7 +636,7 @@ Item {
                   opacity: modelData.enabled ? 1 : 0.6
                   foreground: Color.menu.text
                   fontFamily: Style.font.menuFamily
-                  onClicked: root.selectProfile(index, false)
+                  onClicked: root.selectProfile(index)
                 }
               }
 
@@ -705,9 +724,9 @@ Item {
 
                   Button {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: activateCommand.running ? "Activating…" : "Activate"
+                    text: "Activate"
                     bordered: true
-                    enabled: root.selected !== null && root.selected.enabled && !root.selected.active && !root.busy
+                    enabled: root.selected !== null && root.selected.enabled && !root.selected.active
                     opacity: enabled ? 1 : 0.4
                     foreground: Color.menu.text
                     fontFamily: Style.font.menuFamily
@@ -773,40 +792,12 @@ Item {
                   draft: root.draft
                   bounds: Model.dpiBounds(root.info)
                   rates: root.info && root.info.report_rates_hz ? root.info.report_rates_hz : []
-                  onEdited: function(next) { root.updateDraft(next) }
+                  onEdited: function(next, immediate) { root.updateDraft(next, immediate) }
                 }
               }
             }
           }
         }
-      }
-
-      ConfirmDialog {
-        id: confirmDialog
-        anchors.fill: parent
-        z: 10
-        opened: root.confirmMode !== ""
-        background: Color.menu.background
-        foreground: Color.menu.text
-        fontFamily: Style.font.menuFamily
-        message: {
-          var number = root.draft ? root.draft.number : ""
-          if (root.confirmMode === "apply") {
-            return "Write " + root.changes + (root.changes === 1 ? " change" : " changes") + " to profile " + number + "?\n\n"
-              + root.previewText
-              + "\n\n" + (root.selected ? Model.applyNote(root.selected) + " " : "")
-              + "All profiles are backed up first, and the write is read back to verify it."
-          }
-          if (root.confirmMode === "switch") return "Discard the unsaved changes to profile " + number + "?"
-          return "Close and discard the unsaved changes to profile " + number + "?"
-        }
-        confirmText: root.confirmMode === "apply" ? "Write to mouse" : "Discard"
-        cancelText: root.confirmMode === "apply" ? "Cancel" : "Keep editing"
-        onCanceled: {
-          root.confirmMode = ""
-          keyCatcher.forceActiveFocus()
-        }
-        onConfirmed: root.confirm()
       }
     }
   }

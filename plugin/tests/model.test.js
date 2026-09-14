@@ -178,26 +178,16 @@ test("an untouched draft has no changes", () => {
   assert.equal(Model.draftProblem(original), "")
 })
 
-test("editArgs lists only what changed", () => {
-  const original = Model.draftFromSlot(editableSlot())
-  let draft = Model.setField(original, "rateHz", 500)
-  draft = Model.setBinding(draft, "buttons", 6, "key:ctrl+a")
-  draft = Model.setBinding(draft, "gshift", 2, "media:mute")
-  assert.deepEqual(plain(Model.editArgs(draft, original, true)), [
-    "profiles", "edit", "2", "--rate", "500",
-    "--button", "6=key:ctrl+a", "--gshift", "2=media:mute", "--dry-run"
-  ])
-  assert.equal(original.rateHz, 1000, "drafts are copied, not mutated")
-})
-
 test("changing stages sends the default and shift they point at", () => {
   const original = Model.draftFromSlot(editableSlot())
   const draft = Model.setStage(original, 0, 400)
   assert.equal(draft.shiftDpi, 400, "shift follows the stage it pointed at")
-  assert.deepEqual(plain(Model.editArgs(draft, original, false)), [
-    "profiles", "edit", "2",
-    "--dpi", "400,1200,1600,2400,3200", "--default-dpi", "1600", "--shift-dpi", "400"
-  ])
+  assert.deepEqual(plain(Model.serveChanges(draft, original)), {
+    dpi: [400, 1200, 1600, 2400, 3200],
+    default_dpi: 1600,
+    shift_dpi: 400
+  })
+  assert.equal(original.dpiStages[0], 800, "drafts are copied, not mutated")
 })
 
 test("removing the default stage asks for a new one", () => {
@@ -437,27 +427,6 @@ test("pictureViews keeps only usable views", () => {
   assert.equal(Model.viewWidth(picture.views[0], 280), 156)
 })
 
-test("applyNote says when a change reaches the mouse", () => {
-  assert.equal(
-    Model.applyNote({ position: 0, enabled: true, active: true }),
-    "Profile 1 is in use: the mouse switches profiles for a moment to load the change."
-  )
-  assert.match(Model.applyNote({ position: 1, enabled: true, active: false }), /once you activate it/)
-  assert.match(Model.applyNote({ position: 2, enabled: false, active: false }), /turned off on the mouse/)
-})
-
-test("savedNotice reports whether the mouse uses the change", () => {
-  const report = (takes_effect) => ({ profile: 2, backup: "/b.json", takes_effect })
-  assert.deepEqual(plain(Model.savedNotice(report({ state: "now" }))), {
-    text: "Profile 2 saved and verified. The mouse is using it now.",
-    isError: false
-  })
-  assert.match(Model.savedNotice(report({ state: "when_activated" })).text, /activate it/)
-  const notLoaded = Model.savedNotice(report({ state: "not_loaded", reason: "no other profile is enabled" }))
-  assert.equal(notLoaded.isError, true)
-  assert.match(notLoaded.text, /no other profile is enabled\.$/)
-})
-
 test("the DPI slider is logarithmic and snaps to the sensor's step", () => {
   const bounds = { min: 100, max: 25600, step: 50 }
   assert.equal(Model.dpiToPosition(100, bounds), 0)
@@ -470,4 +439,58 @@ test("the DPI slider is logarithmic and snaps to the sensor's step", () => {
   assert.equal(Model.positionToDpi(0, bounds), 100)
   assert.equal(Model.positionToDpi(1000, bounds), 25600)
   assert.equal(Model.positionToDpi(437, bounds) % 50, 0)
+})
+
+test("serveChanges sends only what changed", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  assert.deepEqual(plain(Model.serveChanges(original, original)), {})
+  let draft = Model.setField(original, "rateHz", 500)
+  draft = Model.setBinding(draft, "buttons", 6, "key:ctrl+a")
+  draft = Model.setBinding(draft, "gshift", 2, "media:mute")
+  assert.deepEqual(plain(Model.serveChanges(draft, original)), {
+    rate: 500,
+    buttons: { 6: "key:ctrl+a" },
+    gshift: { 2: "media:mute" }
+  })
+  // Stage edits carry the default and shift stages with them.
+  assert.deepEqual(plain(Model.serveChanges(Model.setStage(original, 4, 6400), original)), {
+    dpi: [800, 1200, 1600, 2400, 6400],
+    default_dpi: 1600,
+    shift_dpi: 800
+  })
+  assert.deepEqual(plain(Model.serveChanges(Model.setField(original, "defaultDpi", 2400), original)), {
+    default_dpi: 2400
+  })
+})
+
+test("saveStatus reports whether the mouse uses the change", () => {
+  const reply = (takes_effect) => ({ slot: { position: 1 }, takes_effect, undo: 1 })
+  assert.deepEqual(plain(Model.saveStatus(reply({ state: "now" }), false)), {
+    text: "Saved to profile 2. The mouse is using it now.",
+    isError: false
+  })
+  assert.equal(
+    Model.saveStatus(reply({ state: "when_activated" }), true).text,
+    "Undid the last change to profile 2. It applies when you activate this profile."
+  )
+  const notLoaded = Model.saveStatus(reply({ state: "not_loaded", reason: "no other profile is enabled" }), false)
+  assert.equal(notLoaded.isError, true)
+  assert.match(notLoaded.text, /no other profile is enabled\.$/)
+  assert.equal(Model.saveStatus(reply(null), false).text, "Profile 2 already has these settings.")
+})
+
+test("withSlot and withActive update profiles without a full read", () => {
+  const onboard = {
+    mode: "onboard",
+    description: {},
+    active_position: 0,
+    profiles: [0, 1, 2].map((position) => ({ position, active: position === 0, profile: { v: 1 } }))
+  }
+  const saved = plain(Model.withSlot(onboard, { position: 1, active: false, profile: { v: 2 } }))
+  assert.deepEqual(saved.profiles.map((slot) => slot.profile.v), [1, 2, 1])
+  assert.equal(saved.active_position, 0)
+  const switched = plain(Model.withActive(onboard, 2))
+  assert.deepEqual(switched.profiles.map((slot) => slot.active), [false, false, true])
+  assert.equal(switched.active_position, 2)
+  assert.equal(onboard.profiles[0].active, true, "the original is not mutated")
 })

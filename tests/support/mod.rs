@@ -162,6 +162,8 @@ impl FakeG502x {
     }
 
     /// The feature table index the device assigns to `id`.
+    // Each test binary compiles this module; not every one needs every helper.
+    #[allow(dead_code)]
     pub fn feature_index(&self, id: u16) -> u8 {
         self.fixture
             .features

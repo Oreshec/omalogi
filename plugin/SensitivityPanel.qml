@@ -16,19 +16,20 @@ Item {
   // The value under the slider while it is dragged, or 0.
   property int dragDpi: 0
 
-  signal edited(var draft)
+  // `immediate` is false for typed values, which save after a pause.
+  signal edited(var draft, bool immediate)
 
   readonly property var stages: draft ? draft.dpiStages : []
   readonly property int current: Math.max(0, Math.min(stage, stages.length - 1))
   readonly property int currentDpi: stages.length > 0 ? stages[current] : 0
   readonly property string problem: draft ? Model.draftProblem(draft) : ""
 
-  function setCurrent(dpi) {
+  function setCurrent(dpi, immediate) {
     if (!panel.draft) return
     var snapped = Math.round(dpi / panel.bounds.step) * panel.bounds.step
     snapped = Math.max(panel.bounds.min, Math.min(panel.bounds.max, snapped))
     if (snapped === panel.currentDpi) return
-    panel.edited(Model.setStage(panel.draft, panel.current, snapped))
+    panel.edited(Model.setStage(panel.draft, panel.current, snapped), immediate)
   }
 
   component Label: Text {
@@ -134,7 +135,7 @@ Item {
             onClicked: {
               var next = Model.addStage(panel.draft, Model.nextStageDpi(panel.draft, panel.bounds))
               panel.stage = next.dpiStages.length - 1
-              panel.edited(next)
+              panel.edited(next, true)
             }
           }
         }
@@ -172,7 +173,7 @@ Item {
           onMoved: function(position) { panel.dragDpi = Model.positionToDpi(position, panel.bounds) }
           onReleased: function(position) {
             panel.dragDpi = 0
-            panel.setCurrent(Model.positionToDpi(position, panel.bounds))
+            panel.setCurrent(Model.positionToDpi(position, panel.bounds), true)
           }
         }
 
@@ -185,7 +186,7 @@ Item {
           value: panel.currentDpi
           foreground: Color.menu.text
           fontFamily: Style.font.menuFamily
-          onModified: function(value) { panel.setCurrent(value) }
+          onModified: function(value) { panel.setCurrent(value, false) }
         }
       }
 
@@ -205,7 +206,7 @@ Item {
           opacity: enabled ? 1 : 0.4
           foreground: Color.menu.text
           fontFamily: Style.font.menuFamily
-          onClicked: panel.edited(Model.setField(panel.draft, "defaultDpi", panel.currentDpi))
+          onClicked: panel.edited(Model.setField(panel.draft, "defaultDpi", panel.currentDpi), true)
         }
 
         Button {
@@ -215,7 +216,7 @@ Item {
           opacity: enabled ? 1 : 0.4
           foreground: Color.menu.text
           fontFamily: Style.font.menuFamily
-          onClicked: panel.edited(Model.setField(panel.draft, "shiftDpi", panel.currentDpi))
+          onClicked: panel.edited(Model.setField(panel.draft, "shiftDpi", panel.currentDpi), true)
         }
 
         Button {
@@ -228,7 +229,7 @@ Item {
           onClicked: {
             var next = Model.removeStage(panel.draft, panel.current)
             panel.stage = Math.max(0, panel.current - 1)
-            panel.edited(next)
+            panel.edited(next, true)
           }
         }
       }
@@ -256,7 +257,7 @@ Item {
         value: panel.draft && panel.draft.rateHz !== null ? String(panel.draft.rateHz) : ""
         foreground: Color.menu.text
         fontFamily: Style.font.menuFamily
-        onChanged: function(value) { panel.edited(Model.setField(panel.draft, "rateHz", Number(value))) }
+        onChanged: function(value) { panel.edited(Model.setField(panel.draft, "rateHz", Number(value)), true) }
       }
 
       Label {

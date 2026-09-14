@@ -84,6 +84,13 @@ pub enum EditError {
         source: OnboardError,
     },
     #[error(
+        "sector {sector:#06x} read back with an invalid checksum twice, so it was not \
+         changed; if this persists, restore a backup"
+    )]
+    CorruptSector { sector: u16 },
+    #[error("the data for profile {number} is not a valid profile for this mouse")]
+    InvalidProfileSector { number: usize },
+    #[error(
         "the change was written and verified, but the mouse is left on profile {current}: \
          switching back to profile {profile} to load it failed"
     )]
@@ -132,9 +139,34 @@ pub struct EditPlan {
     pub before: Profile,
     pub after: Profile,
     #[serde(skip)]
+    enabled: bool,
+    #[serde(skip)]
     previous: Vec<u8>,
     #[serde(skip)]
     edited: Vec<u8>,
+}
+
+impl EditPlan {
+    /// The profile's memory before the edit, to put back for undo.
+    #[must_use]
+    pub fn previous_sector(&self) -> &[u8] {
+        &self.previous
+    }
+
+    /// The profile's memory after the edit.
+    #[must_use]
+    pub fn edited_sector(&self) -> &[u8] {
+        &self.edited
+    }
+
+    /// The profile's directory entry, as read when planning.
+    #[must_use]
+    pub fn entry(&self) -> format::DirectoryEntry {
+        format::DirectoryEntry {
+            sector: self.sector,
+            enabled: self.enabled,
+        }
+    }
 }
 
 /// When written profile memory reaches the mouse.
@@ -284,9 +316,7 @@ impl Session {
             return Err(OnboardError::ProtectedSector(entry.sector).into());
         }
 
-        let previous = feature
-            .read_sector(entry.sector, description.sector_size)
-            .await?;
+        let previous = read_user_sector(&feature, entry.sector, description.sector_size).await?;
         let before = Profile::parse(&previous, &description).map_err(OnboardError::from)?;
         let mut editor = ProfileEditor::new(&previous, &description).map_err(OnboardError::from)?;
 
@@ -378,6 +408,7 @@ impl Session {
             sector: entry.sector,
             before,
             after,
+            enabled: entry.enabled,
             previous,
             edited,
         })
@@ -393,14 +424,55 @@ impl Session {
         let plan = self.plan_profile_changes(number, changes).await?;
         let backup = self.backup().await?;
         save_backup(&backup, backup_path)?;
-        let feature = self.onboard_feature().await?;
-        write_verified(&feature, plan.sector, &plan.edited, &plan.previous).await?;
-        let takes_effect = self.load_written(&[plan.sector]).await?;
+        let takes_effect = self.write_plan(&plan).await?;
         Ok(WriteReport {
             plan,
             backup: backup_path.to_owned(),
             takes_effect,
         })
+    }
+
+    /// Writes a plan from [`Session::plan_profile_changes`], verifies it, and loads it
+    /// when it changed the active profile. The caller makes sure a backup exists first.
+    pub async fn write_plan(&mut self, plan: &EditPlan) -> Result<TakesEffect, EditError> {
+        let feature = self.onboard_feature().await?;
+        write_verified(&feature, plan.sector, &plan.edited, &plan.previous).await?;
+        self.load_written(&[plan.sector]).await
+    }
+
+    /// Writes whole profile memory into profile `number`, as undo does. The data must be
+    /// a valid profile for this mouse; the write is verified and loaded when active.
+    pub async fn write_profile_sector(
+        &mut self,
+        number: usize,
+        data: &[u8],
+    ) -> Result<TakesEffect, EditError> {
+        let feature = self.onboard_feature().await?;
+        let description = feature.description().await?;
+        let entries = read_directory(&feature, &description).await?;
+        let entry = number
+            .checked_sub(1)
+            .and_then(|position| entries.get(position))
+            .copied()
+            .ok_or(EditError::NoSuchProfile {
+                number,
+                count: entries.len(),
+            })?;
+        if entry.sector >= format::ROM_DIRECTORY_SECTOR {
+            return Err(OnboardError::ProtectedSector(entry.sector).into());
+        }
+        if data.len() != usize::from(description.sector_size)
+            || !format::sector_crc_valid(data)
+            || Profile::parse(data, &description).is_err()
+        {
+            return Err(EditError::InvalidProfileSector { number });
+        }
+        let previous = read_user_sector(&feature, entry.sector, description.sector_size).await?;
+        if previous == data {
+            return Err(EditError::NoChanges);
+        }
+        write_verified(&feature, entry.sector, data, &previous).await?;
+        self.load_written(&[entry.sector]).await
     }
 
     /// Makes the mouse load the active profile again when `written` includes its sector.
@@ -409,46 +481,45 @@ impl Session {
     /// profile and straight back. Callers hold the device lock, which keeps the daemon
     /// from acting on the brief switch.
     async fn load_written(&mut self, written: &[u16]) -> Result<TakesEffect, EditError> {
-        let (active, other) = {
-            let feature = self.onboard_feature().await?;
-            if feature.mode().await.map_err(SessionError::from)? != Mode::Onboard {
-                // Onboard profiles are not in use at all in host mode.
-                return Ok(TakesEffect::WhenActivated);
-            }
-            let description = feature.description().await?;
-            let entries = read_directory(&feature, &description).await?;
-            let index = feature
-                .current_profile_index()
-                .await
-                .map_err(SessionError::from)?;
-            let active = format::current_profile_position(index).filter(|&position| {
-                entries
-                    .get(position)
-                    .is_some_and(|entry| written.contains(&entry.sector))
-            });
-            let Some(active) = active else {
-                return Ok(TakesEffect::WhenActivated);
-            };
-            let other = entries
-                .iter()
-                .enumerate()
-                .find(|&(position, entry)| position != active && entry.enabled)
-                .map(|(position, _)| position);
-            (active + 1, other.map(|position| position + 1))
+        let feature = self.onboard_feature().await?;
+        if feature.mode().await.map_err(SessionError::from)? != Mode::Onboard {
+            // Onboard profiles are not in use at all in host mode.
+            return Ok(TakesEffect::WhenActivated);
+        }
+        let description = feature.description().await?;
+        let entries = read_directory(&feature, &description).await?;
+        let index = feature
+            .current_profile_index()
+            .await
+            .map_err(SessionError::from)?;
+        let Some(active) = format::current_profile_position(index).filter(|&position| {
+            entries
+                .get(position)
+                .is_some_and(|entry| written.contains(&entry.sector))
+        }) else {
+            return Ok(TakesEffect::WhenActivated);
         };
-        let Some(other) = other else {
+        let Some(other) = entries
+            .iter()
+            .enumerate()
+            .find(|&(position, entry)| position != active && entry.enabled)
+            .map(|(position, _)| position)
+        else {
             return Ok(TakesEffect::NotLoaded {
                 reason: "the mouse loads a profile when it switches to it, and no other \
                          profile is enabled to switch through"
                     .to_owned(),
             });
         };
+        let (active, other) = (active + 1, other + 1);
 
-        let away = self.activate_profile(other).await;
-        let back = match self.activate_profile(active).await {
+        // The directory is known already, so switch directly instead of through
+        // `activate_profile`, which would read it again for each switch.
+        let away = switch_profile(&feature, other).await;
+        let back = match switch_profile(&feature, active).await {
             Ok(()) => Ok(()),
             // Never leave the mouse on the other profile without trying again.
-            Err(_) => self.activate_profile(active).await,
+            Err(_) => switch_profile(&feature, active).await,
         };
         match (away, back) {
             (Ok(()), Ok(())) => Ok(TakesEffect::Now),
@@ -459,7 +530,12 @@ impl Session {
                 ),
             }),
             (_, Err(source)) => {
-                let current = self.active_profile().await.ok().flatten().unwrap_or(other);
+                let current = feature
+                    .current_profile_index()
+                    .await
+                    .ok()
+                    .and_then(format::current_profile_position)
+                    .map_or(other, |position| position + 1);
                 Err(EditError::LeftOnOtherProfile {
                     profile: active,
                     current,
@@ -503,7 +579,7 @@ impl Session {
         let mut writes = Vec::new();
         for sector in sectors {
             let data = backup.user_sector(sector)?;
-            let previous = feature.read_sector(sector, description.sector_size).await?;
+            let previous = read_user_sector(&feature, sector, description.sector_size).await?;
             if data != previous {
                 writes.push(SectorWrite {
                     sector,
@@ -583,6 +659,45 @@ fn stage_index(
                 .then_some(current_index),
         }
         .ok_or(EditError::StageNeeded { which }),
+    }
+}
+
+/// Reads a user sector, reading it once more if its checksum fails. Nothing is ever
+/// edited or rolled back to from bytes that do not check out: a read that overlapped
+/// another process's traffic has come back wrong on a G502 X.
+async fn read_user_sector(
+    feature: &OnboardProfilesFeature,
+    sector: u16,
+    size: u16,
+) -> Result<Vec<u8>, EditError> {
+    for _ in 0..2 {
+        let data = feature.read_sector(sector, size).await?;
+        if format::sector_crc_valid(&data) {
+            return Ok(data);
+        }
+    }
+    Err(EditError::CorruptSector { sector })
+}
+
+/// Selects profile `number` (1-based) and confirms that the mouse reports it.
+async fn switch_profile(
+    feature: &OnboardProfilesFeature,
+    number: usize,
+) -> Result<(), SessionError> {
+    let index = u8::try_from(number).map_err(|_| SessionError::NoSuchProfile {
+        number,
+        count: usize::from(u8::MAX),
+    })?;
+    feature.set_current_profile(index).await?;
+    let reported = format::current_profile_position(feature.current_profile_index().await?)
+        .map(|position| position + 1);
+    if reported == Some(number) {
+        Ok(())
+    } else {
+        Err(SessionError::SwitchNotApplied {
+            requested: number,
+            reported,
+        })
     }
 }
 

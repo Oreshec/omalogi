@@ -22,7 +22,7 @@ use omalogi::{
         format::Binding,
     },
     rules::Config,
-    setup,
+    serve, setup,
 };
 use serde::Serialize;
 
@@ -75,6 +75,9 @@ enum Command {
         #[arg(long)]
         refresh: bool,
     },
+    /// Serve the shell plugin: JSON requests on stdin, one per line, answered on stdout.
+    #[command(hide = true)]
+    Serve,
 }
 
 #[derive(Subcommand)]
@@ -91,6 +94,11 @@ enum DeviceCommand {
         /// File to write; it must not exist yet. Defaults to $XDG_STATE_HOME/omalogi/backups/.
         #[arg(long, short)]
         output: Option<PathBuf>,
+    },
+    /// Show the sensor's live DPI, or set it without saving it to any profile.
+    Dpi {
+        /// The DPI to use right now, e.g. 1600.
+        value: Option<u16>,
     },
     /// Write profile memory back from a backup. The current memory is backed up first.
     Restore {
@@ -155,6 +163,7 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Actions => print_actions(cli.json),
         Command::Daemon { config } => runtime.block_on(run_daemon(config)),
+        Command::Serve => runtime.block_on(run_serve()),
         Command::Picture { offline, refresh } => {
             show_picture(cli.json, assets::Options { offline, refresh })
         }
@@ -218,6 +227,26 @@ fn show_picture(json: bool, options: assets::Options) -> Result<(), Box<dyn Erro
     Ok(())
 }
 
+async fn run_serve() -> Result<(), Box<dyn Error>> {
+    // The overlay starts this on demand; ride out a single stalled first request, as the
+    // daemon does, before reporting the device as unavailable.
+    let session = match open_session(serve::SOFTWARE_ID).await {
+        Ok(session) => session,
+        Err(_) => {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            open_session(serve::SOFTWARE_ID).await?
+        }
+    };
+    let server = serve::Server::new(session, DeviceLock::default_path(), default_backup_path);
+    server
+        .run(
+            tokio::io::BufReader::new(tokio::io::stdin()),
+            tokio::io::stdout(),
+        )
+        .await?;
+    Ok(())
+}
+
 fn run_setup(json: bool, options: setup::Options) -> Result<(), Box<dyn Error>> {
     let report = setup::setup(options);
     output(json, &report, || {
@@ -261,6 +290,9 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
         DeviceCommand::Restore { file, .. } => Some(BackupFile::load(file)?),
         _ => None,
     };
+    // Held for the whole command, so no other Omalogi process's requests interleave with
+    // this one's (see `open_session`).
+    let _device = device_lock()?;
     let mut session = Session::open(CLI_SOFTWARE_ID).await?;
     match command {
         DeviceCommand::Info => {
@@ -315,13 +347,28 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
                 let plan = session.plan_profile_changes(number, &changes).await?;
                 output(json, &plan, || text::edit_plan(&plan))?;
             } else {
-                let _lock = device_lock()?;
                 let path = default_backup_path(session.model().name)?;
                 let report = session
                     .apply_profile_changes(number, &changes, &path)
                     .await?;
                 output(json, &report, || text::write_report(&report))?;
             }
+        }
+        DeviceCommand::Dpi { value } => {
+            let dpi = match value {
+                None => session.live_dpi().await?,
+                Some(value) => {
+                    if !session.info().await?.dpi_values.contains(&value) {
+                        return Err(format!("the sensor does not support {value} DPI").into());
+                    }
+                    session.set_live_dpi(value).await?
+                }
+            };
+            #[derive(Serialize)]
+            struct LiveDpi {
+                dpi: u16,
+            }
+            output(json, &LiveDpi { dpi }, || format!("{dpi} DPI\n"))?;
         }
         DeviceCommand::Backup { output: path } => {
             let backup = session.backup().await?;
@@ -353,7 +400,6 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
                 let plan = session.plan_restore(&backup).await?;
                 output(json, &plan, || text::restore_plan(&plan))?;
             } else {
-                let _lock = device_lock()?;
                 let path = default_backup_path(session.model().name)?;
                 let report = session.restore(&backup, &path).await?;
                 output(json, &report, || text::restore_report(&report))?;
@@ -361,6 +407,18 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
         }
     }
     Ok(())
+}
+
+/// Opens the device with the device lock held while connecting, for `omalogi serve`,
+/// which then takes the lock per request.
+///
+/// Requests from two Omalogi processes at the same moment are not safe on a G502 X: 6 of
+/// 10 overlapping server starts timed out for 5.5 s, and a memory read overlapping
+/// another process's reads came back with the wrong bytes. Every process therefore holds
+/// the device lock while it talks to the mouse; the daemon skips a poll while it is taken.
+async fn open_session(software_id: u8) -> Result<Session, Box<dyn Error>> {
+    let _connecting = device_lock()?;
+    Ok(Session::open(software_id).await?)
 }
 
 /// Held for a whole memory write or restore, so the daemon never polls in the middle.

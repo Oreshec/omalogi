@@ -19,9 +19,16 @@ All notable changes are listed here. The project follows
   `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.
 - Omarchy shell plugin: a G HUB-style editor with the mouse, a card and leader line per
   button, a grouped and searchable action picker, a shortcut recorder, a G-Shift layer,
-  DPI stages and report rate. Changes collect until **Apply to mouse**, which previews,
-  confirms and does a verified write. Opens on a given profile, view or button. Plus a
-  bar indicator for the active profile.
+  DPI stages and report rate. Changes save themselves (about 0.3 s to take effect on the
+  profile in use) with Undo; the session's first write is preceded by a backup of all
+  profile memory. Opens on a given profile, view or button. Plus a bar indicator for the
+  active profile.
+- `omalogi serve`, the overlay's long-lived connection to the mouse: JSON requests on
+  stdin, answers on stdout, with an undo stack.
+- `omalogi dpi [VALUE]` shows the sensor's live DPI (setting it is refused by the G502 X
+  while it runs onboard profiles).
+- Every Omalogi process holds a device lock while talking to the mouse, and profile data
+  that fails its checksum is read again and otherwise refused.
 - Keyboard shortcuts can use any standard key, including punctuation, navigation keys
   and F13–F24.
 - Edits and restores that change the profile in use take effect immediately: the mouse

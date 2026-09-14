@@ -36,6 +36,10 @@ pub const PLUGIN_FILES: &[(&str, &str)] = &[
     ),
     ("plugin/Model.js", include_str!("../plugin/Model.js")),
     (
+        "plugin/OmalogiServer.qml",
+        include_str!("../plugin/OmalogiServer.qml"),
+    ),
+    (
         "plugin/DeviceCanvas.qml",
         include_str!("../plugin/DeviceCanvas.qml"),
     ),

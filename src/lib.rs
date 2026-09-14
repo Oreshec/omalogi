@@ -9,6 +9,7 @@ pub mod hyprland;
 pub mod lock;
 pub mod onboard;
 pub mod rules;
+pub mod serve;
 pub mod setup;
 
 /// An error and its causes on one line: `outer: cause: root cause`.

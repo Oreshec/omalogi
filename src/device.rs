@@ -68,6 +68,8 @@ pub enum SessionError {
          the device may never have had profiles written"
     )]
     InvalidDirectoryChecksum,
+    #[error("sector {sector:#06x} read back with an invalid checksum twice")]
+    CorruptSector { sector: u16 },
     #[error("profile {number} does not exist; the device has {count} profile slots")]
     NoSuchProfile { number: usize, count: usize },
     #[error("profile {0} is disabled")]
@@ -273,6 +275,24 @@ impl Session {
         })
     }
 
+    /// The sensor's DPI right now, which may differ from the profile's stages.
+    pub async fn live_dpi(&mut self) -> Result<u16, SessionError> {
+        let dpi = self
+            .feature::<AdjustableDpiFeature>("adjustable DPI (0x2201)")
+            .await?;
+        Ok(dpi.get_sensor_dpi(0).await?)
+    }
+
+    /// Sets the sensor's DPI in the mouse's working memory, without writing any onboard
+    /// profile, and returns the DPI the mouse reports afterwards.
+    pub async fn set_live_dpi(&mut self, value: u16) -> Result<u16, SessionError> {
+        let dpi = self
+            .feature::<AdjustableDpiFeature>("adjustable DPI (0x2201)")
+            .await?;
+        dpi.set_sensor_dpi(0, value).await?;
+        Ok(dpi.get_sensor_dpi(0).await?)
+    }
+
     pub async fn onboard(&mut self) -> Result<OnboardState, SessionError> {
         let feature = self.onboard_feature().await?;
         let description = feature.description().await?;
@@ -286,27 +306,13 @@ impl Session {
             let sector = feature
                 .read_sector(entry.sector, description.sector_size)
                 .await?;
-            let profile = Profile::parse(&sector, &description).map_err(OnboardError::from)?;
-            profiles.push(ProfileSlot {
+            profiles.push(profile_slot_from(
                 position,
-                sector: entry.sector,
-                enabled: entry.enabled,
-                active: active_position == Some(position),
-                crc_valid: format::sector_crc_valid(&sector),
-                labels: BindingLabels {
-                    buttons: labels_for(&profile.buttons),
-                    gshift_buttons: labels_for(&profile.gshift_buttons),
-                },
-                actions: BindingActions {
-                    buttons: profile.buttons.iter().map(action::action_text).collect(),
-                    gshift_buttons: profile
-                        .gshift_buttons
-                        .iter()
-                        .map(action::action_text)
-                        .collect(),
-                },
-                profile,
-            });
+                entry,
+                &sector,
+                &description,
+                active_position,
+            )?);
         }
 
         Ok(OnboardState {
@@ -315,6 +321,49 @@ impl Session {
             active_position,
             profiles,
         })
+    }
+
+    /// A profile from memory that was just written and verified, without reading the
+    /// mouse again: `data` is what the mouse now holds for profile `number`.
+    pub async fn written_slot(
+        &mut self,
+        number: usize,
+        entry: format::DirectoryEntry,
+        active: bool,
+        data: &[u8],
+    ) -> Result<ProfileSlot, SessionError> {
+        let description = self.onboard_feature().await?.description().await?;
+        let position = number.saturating_sub(1);
+        profile_slot_from(
+            position,
+            entry,
+            data,
+            &description,
+            active.then_some(position),
+        )
+    }
+
+    /// One profile as read from the mouse; `number` is 1-based, as shown to users.
+    pub async fn profile_slot(&mut self, number: usize) -> Result<ProfileSlot, SessionError> {
+        let feature = self.onboard_feature().await?;
+        let description = feature.description().await?;
+        let active_position =
+            format::current_profile_position(feature.current_profile_index().await?);
+        let entries = read_directory(&feature, &description).await?;
+        let Some(position) = number
+            .checked_sub(1)
+            .filter(|&position| position < entries.len())
+        else {
+            return Err(SessionError::NoSuchProfile {
+                number,
+                count: entries.len(),
+            });
+        };
+        let entry = entries[position];
+        let sector = feature
+            .read_sector(entry.sector, description.sector_size)
+            .await?;
+        profile_slot_from(position, entry, &sector, &description, active_position)
     }
 
     /// Makes an enabled profile active, then reads the active profile back to confirm.
@@ -383,9 +432,7 @@ impl Session {
 
         let mut sectors = BTreeMap::new();
         for (directory, max_entries) in directories {
-            let data = feature
-                .read_sector(directory, description.sector_size)
-                .await?;
+            let data = read_backup_sector(&feature, directory, description.sector_size).await?;
             let entries = format::parse_directory(&data, max_entries.into());
             sectors.insert(directory, data);
             for entry in entries {
@@ -394,9 +441,7 @@ impl Session {
                 }
                 if let Entry::Vacant(slot) = sectors.entry(entry.sector) {
                     slot.insert(
-                        feature
-                            .read_sector(entry.sector, description.sector_size)
-                            .await?,
+                        read_backup_sector(&feature, entry.sector, description.sector_size).await?,
                     );
                 }
             }
@@ -424,6 +469,36 @@ impl Session {
     }
 }
 
+fn profile_slot_from(
+    position: usize,
+    entry: format::DirectoryEntry,
+    sector: &[u8],
+    description: &Description,
+    active_position: Option<usize>,
+) -> Result<ProfileSlot, SessionError> {
+    let profile = Profile::parse(sector, description).map_err(OnboardError::from)?;
+    Ok(ProfileSlot {
+        position,
+        sector: entry.sector,
+        enabled: entry.enabled,
+        active: active_position == Some(position),
+        crc_valid: format::sector_crc_valid(sector),
+        labels: BindingLabels {
+            buttons: labels_for(&profile.buttons),
+            gshift_buttons: labels_for(&profile.gshift_buttons),
+        },
+        actions: BindingActions {
+            buttons: profile.buttons.iter().map(action::action_text).collect(),
+            gshift_buttons: profile
+                .gshift_buttons
+                .iter()
+                .map(action::action_text)
+                .collect(),
+        },
+        profile,
+    })
+}
+
 fn labels_for(bindings: &[Binding]) -> Vec<Option<String>> {
     bindings
         .iter()
@@ -431,21 +506,47 @@ fn labels_for(bindings: &[Binding]) -> Vec<Option<String>> {
         .collect()
 }
 
+/// Reads a sector for a backup. User sectors must pass their checksum, reading once more
+/// if not, so a backup never holds bytes a restore would refuse. Factory sectors carry
+/// no checksum.
+async fn read_backup_sector(
+    feature: &OnboardProfilesFeature,
+    sector: u16,
+    size: u16,
+) -> Result<Vec<u8>, SessionError> {
+    let data = feature.read_sector(sector, size).await?;
+    if sector >= format::ROM_DIRECTORY_SECTOR || format::sector_crc_valid(&data) {
+        return Ok(data);
+    }
+    let data = feature.read_sector(sector, size).await?;
+    if format::sector_crc_valid(&data) {
+        Ok(data)
+    } else if sector == format::USER_DIRECTORY_SECTOR {
+        Err(SessionError::InvalidDirectoryChecksum)
+    } else {
+        Err(SessionError::CorruptSector { sector })
+    }
+}
+
 /// Reads the user profile directory, refusing one whose checksum does not match.
 pub(crate) async fn read_directory(
     feature: &OnboardProfilesFeature,
     description: &Description,
 ) -> Result<Vec<DirectoryEntry>, SessionError> {
-    let directory = feature
-        .read_sector(format::USER_DIRECTORY_SECTOR, description.sector_size)
-        .await?;
-    if !format::sector_crc_valid(&directory) {
-        return Err(SessionError::InvalidDirectoryChecksum);
+    // A read that overlaps other traffic can come back wrong, so read once more before
+    // calling the directory invalid.
+    for _ in 0..2 {
+        let directory = feature
+            .read_sector(format::USER_DIRECTORY_SECTOR, description.sector_size)
+            .await?;
+        if format::sector_crc_valid(&directory) {
+            return Ok(format::parse_directory(
+                &directory,
+                description.profile_count.into(),
+            ));
+        }
     }
-    Ok(format::parse_directory(
-        &directory,
-        description.profile_count.into(),
-    ))
+    Err(SessionError::InvalidDirectoryChecksum)
 }
 
 /// Expands an AdjustableDPI sensor list: plain values, and `min, 0xE000 | step, max`

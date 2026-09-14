@@ -148,6 +148,49 @@ to another enabled profile and straight back (under the device lock) and reports
 Result: **pass**. Profile 1 was active again at the end, and profile 2 was byte-identical
 to its state before the tests.
 
+## 2026-09-13 — responsiveness, live DPI and concurrent access
+
+**Live DPI.** `setSensorDpi` (0x2201 function 3) in onboard mode returned a HID++ feature
+error and the live DPI stayed unchanged, so a DPI preview without writing a profile is
+not possible while the mouse runs onboard profiles.
+
+**Latency.** Measured on the release build, profile 2, everything undone afterwards:
+
+| Step | Before | After |
+|---|---|---|
+| Overlay save of the profile in use | ~1.26 s (preview, edit, full reread) | 316–325 ms via `omalogi serve` |
+| First save of a session (includes the full backup) | — | 693 ms |
+| Undo on the profile in use | — | 414 ms |
+| Activate a profile | ~0.3 s process start | 76 ms |
+
+Gains came from one long-lived session, building the result from the verified bytes
+instead of reading the profile again, and switching profiles during a reload without
+reading the directory each time.
+
+**Concurrent access.** Two Omalogi processes talking to the mouse at the same moment are
+not safe:
+
+| Test | Result |
+|---|---|
+| 10 `omalogi serve` starts, each racing a CLI read | 6 took 5.5 s (a request timed out) |
+| 10 starts alone, daemon polling | all ~325 ms |
+| A `state` read overlapping other processes' memory reads | the directory came back with an invalid checksum |
+
+Fix: every process holds the device lock for all of its traffic (CLI per command, the
+server per request, the daemon per poll, as before), and profile data that fails its
+checksum is read once more and otherwise refused, never edited or written back.
+
+Stress test after the fix: a loop reading all profiles continuously, 10 server starts
+racing CLI reads, and the full save and undo sequence at the same time.
+
+| Check | Result |
+|---|---|
+| Loop reads | 40 of 40 ok, every checksum valid |
+| Server starts | 10 of 10 ok (~0.92 s, waiting for the lock; no timeouts) |
+| Saves and undos under load | all ok; profile 2 byte-identical afterwards |
+
+Result: **pass**.
+
 ## Observations
 
 - 2026-09-13 20:00:34: one daemon poll failed with `ETIMEDOUT` (os error 110) from the

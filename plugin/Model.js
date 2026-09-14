@@ -243,25 +243,6 @@ function actionChoice(action) {
 }
 
 
-// Arguments for `omalogi profiles edit`, covering only what differs from `original`.
-function editArgs(draft, original, dryRun) {
-  var args = ["profiles", "edit", String(draft.number)]
-  var stagesChanged = draft.dpiStages.join(",") !== original.dpiStages.join(",")
-  if (stagesChanged) args.push("--dpi", draft.dpiStages.join(","))
-  if ((stagesChanged || draft.defaultDpi !== original.defaultDpi) && draft.defaultDpi !== null)
-    args.push("--default-dpi", String(draft.defaultDpi))
-  if ((stagesChanged || draft.shiftDpi !== original.shiftDpi) && draft.shiftDpi !== null)
-    args.push("--shift-dpi", String(draft.shiftDpi))
-  if (draft.rateHz !== original.rateHz && draft.rateHz !== null) args.push("--rate", String(draft.rateHz))
-  var tables = [["buttons", "--button"], ["gshift", "--gshift"]]
-  tables.forEach(function(table) {
-    draft[table[0]].forEach(function(action, slot) {
-      if (action !== null && action !== original[table[0]][slot]) args.push(table[1], slot + "=" + action)
-    })
-  })
-  if (dryRun) args.push("--dry-run")
-  return args
-}
 
 
 // ---- Shortcut recorder -----------------------------------------------------
@@ -508,25 +489,6 @@ function slotEntries(slot, draft, original, catalog, table, buttonCount, verifie
 
 // ---- Applying --------------------------------------------------------------
 
-// What the confirmation says about when a change to `slot` reaches the mouse.
-function applyNote(slot) {
-  var number = slot.position + 1
-  if (slot.active) return "Profile " + number + " is in use: the mouse switches profiles for a moment to load the change."
-  if (slot.enabled) return "Profile " + number + " is not in use: the change applies once you activate it."
-  return "Profile " + number + " is turned off on the mouse: the change applies once it is turned on and activated."
-}
-
-// The footer message after a write, from `omalogi profiles edit --json`.
-function savedNotice(report) {
-  var saved = "Profile " + report.profile + " saved and verified. "
-  var effect = report.takes_effect || {}
-  if (effect.state === "now") return { text: saved + "The mouse is using it now.", isError: false }
-  if (effect.state === "when_activated") {
-    return { text: saved + "It is not the active profile: activate it to use the change.", isError: false }
-  }
-  return { text: saved + "The mouse has not loaded it: " + (effect.reason || "unknown reason") + ".", isError: true }
-}
-
 // The DPI slider is logarithmic, so 400 to 1600 gets as much travel as 6400 to 25600.
 var SLIDER_STEPS = 1000
 
@@ -540,6 +502,75 @@ function positionToDpi(position, bounds) {
   var raw = bounds.min * Math.pow(bounds.max / bounds.min, position / SLIDER_STEPS)
   var snapped = Math.round(raw / bounds.step) * bounds.step
   return Math.max(bounds.min, Math.min(bounds.max, snapped))
+}
+
+// ---- Saving through `omalogi serve` ----------------------------------------
+
+// The fields `omalogi serve` applies: only what differs from `original`. Stage edits
+// carry the default and shift stages, as the stages may have moved.
+function serveChanges(draft, original) {
+  var changes = {}
+  var stagesChanged = draft.dpiStages.join(",") !== original.dpiStages.join(",")
+  if (stagesChanged) changes.dpi = draft.dpiStages.slice()
+  if ((stagesChanged || draft.defaultDpi !== original.defaultDpi) && draft.defaultDpi !== null)
+    changes.default_dpi = draft.defaultDpi
+  if ((stagesChanged || draft.shiftDpi !== original.shiftDpi) && draft.shiftDpi !== null)
+    changes.shift_dpi = draft.shiftDpi
+  if (draft.rateHz !== original.rateHz && draft.rateHz !== null) changes.rate = draft.rateHz
+  ;[["buttons", "buttons"], ["gshift", "gshift"]].forEach(function(pair) {
+    var table = {}
+    var any = false
+    draft[pair[0]].forEach(function(action, slot) {
+      if (action !== null && action !== original[pair[0]][slot]) {
+        table[String(slot)] = action
+        any = true
+      }
+    })
+    if (any) changes[pair[1]] = table
+  })
+  return changes
+}
+
+// The footer after a save (`undo` false) or an undo reply.
+function saveStatus(result, undo) {
+  var number = result.slot.position + 1
+  var lead = undo ? "Undid the last change to profile " + number : "Saved to profile " + number
+  var effect = result.takes_effect
+  if (!effect) return { text: "Profile " + number + " already has these settings.", isError: false }
+  if (effect.state === "now") return { text: lead + ". The mouse is using it now.", isError: false }
+  if (effect.state === "when_activated") {
+    return { text: lead + ". It applies when you activate this profile.", isError: false }
+  }
+  return {
+    text: lead + ", but the mouse has not loaded it: " + (effect.reason || "unknown reason") + ".",
+    isError: true
+  }
+}
+
+// `onboard` with one profile replaced by a fresh read of it.
+function withSlot(onboard, slot) {
+  return {
+    mode: onboard.mode,
+    description: onboard.description,
+    active_position: slot.active ? slot.position : onboard.active_position,
+    profiles: onboard.profiles.map(function(existing) {
+      return existing.position === slot.position ? slot : existing
+    })
+  }
+}
+
+// `onboard` with the profile at `position` in use.
+function withActive(onboard, position) {
+  return {
+    mode: onboard.mode,
+    description: onboard.description,
+    active_position: position,
+    profiles: onboard.profiles.map(function(slot) {
+      var copy = Object.assign({}, slot)
+      copy.active = slot.position === position
+      return copy
+    })
+  }
 }
 
 // Picture views from `omalogi picture`, or [] when there is no usable picture.

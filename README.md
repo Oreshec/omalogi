@@ -30,8 +30,9 @@ device (see [CONTRIBUTING.md](CONTRIBUTING.md) to add one).
 - **Automatic switching**: `omalogi daemon` watches Hyprland focus and activates the
   profile your rules pick for the focused app or monitor.
 - **Omarchy shell plugin**: a G HUB-style editor (the mouse with a card per button, an
-  action picker, a shortcut recorder, DPI stages and report rate, reviewed before every
-  write) and a bar indicator showing the active profile, both themed by Omarchy.
+  action picker, a shortcut recorder, DPI stages and report rate) that saves each change
+  to the mouse within about a third of a second, with Undo, and a bar indicator showing
+  the active profile, both themed by Omarchy.
 - **JSON output** for every command, for scripts and Hyprland bindings.
 
 ## Safety
@@ -48,6 +49,10 @@ Writing onboard memory is the risky part of any mouse tool. Omalogi:
   contents back and tells you whether that worked;
 - never writes the factory profiles, and never flashes firmware;
 - keeps its daemon off the device while a write is in progress.
+
+Every Omalogi process holds a device lock while it talks to the mouse, because requests
+from two processes at once can time out or read back the wrong bytes; any profile data
+that fails its checksum is read again and otherwise refused, never edited.
 
 Every command that writes has a `--dry-run` that shows the exact change without writing.
 Hardware test results are logged in [docs/hardware-tests.md](docs/hardware-tests.md).
@@ -145,14 +150,21 @@ Every profile opens ready to edit, including profiles that are turned off on the
   the keys you press, as physical keys, so your keyboard layout does not matter.
 - **Sensitivity** holds the DPI stages (select one to set its value with the slider, make
   it the default or DPI shift stage, or remove it) and the report rate.
-- Changes are not written straight away. Changed buttons are marked, and the footer
-  counts the unsaved changes. **Apply to mouse** runs the same `--dry-run` as the CLI,
-  shows exactly what will be written, and only writes after you confirm: profile memory
-  is backed up first and the write is read back to verify it. **Revert** drops the
-  changes; switching profiles or closing asks before discarding them.
+- Changes save themselves. A pick, a click or a released slider is written to the mouse
+  almost at once; a typed value waits for a short pause. The footer says when the change
+  is in use, or that it applies once you activate the profile. Before the first write of
+  a session, all profile memory is backed up, and every write is read back to verify it.
+- **Undo** (or `Ctrl+Z`) first drops a change that has not been written yet, then puts
+  back what each earlier write replaced, one at a time. Switching profiles or closing
+  the overlay saves what is pending first.
 
 Keys: `↑`/`↓` or `j`/`k` switch profile, `1` `2` `3` switch view, `Enter` activates the
-profile, `Ctrl+S` applies, `r` refreshes, `Esc` clears the selection and then closes.
+profile, `Ctrl+Z` undoes, `Ctrl+S` saves now, `r` refreshes, `Esc` clears the selection and
+then closes.
+
+The overlay talks to the mouse through `omalogi serve`, one long-lived connection that
+starts when the overlay opens and stops after it closes, so edits do not wait for a
+process to start or the whole profile memory to be read again.
 
 | G-Shift | Sensitivity |
 | --- | --- |
