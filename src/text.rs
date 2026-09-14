@@ -174,7 +174,7 @@ fn binding_changes(out: &mut String, title: &str, before: &[Binding], after: &[B
         if old != new {
             let _ = writeln!(
                 out,
-                "  {title} slot {slot:>2}  {} → {}",
+                "  {title:<7} slot {slot:>2}  {} → {}",
                 label::binding(old),
                 label::binding(new)
             );

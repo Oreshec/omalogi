@@ -27,8 +27,9 @@ device (see [CONTRIBUTING.md](CONTRIBUTING.md) to add one).
 - **Backup and restore** of all profile memory.
 - **Automatic switching**: `omalogi daemon` watches Hyprland focus and activates the
   profile your rules pick for the focused app or monitor.
-- **Omarchy shell plugin**: an overlay (profiles, DPI stages, bindings, one-key
-  switching) and a bar indicator showing the active profile, both themed by Omarchy.
+- **Omarchy shell plugin**: an overlay to switch and edit profiles (DPI stages, report
+  rate, button and G-Shift bindings, with a preview before every write) and a bar
+  indicator showing the active profile, both themed by Omarchy.
 - **JSON output** for every command, for scripts and Hyprland bindings.
 
 ## Safety
@@ -125,7 +126,21 @@ Open it from the bar indicator or with:
 omarchy-shell shell toggle io.github.elberacasa.omalogi '{}'
 ```
 
-`↑`/`↓` or `j`/`k` select a profile, `Enter` activates it, `r` refreshes, `Esc` closes.
+`↑`/`↓` or `j`/`k` select a profile, `Enter` activates it, `e` edits it, `r` refreshes,
+`Esc` closes.
+
+The editor has tabs for DPI and report rate, buttons, and G-Shift buttons. **Preview**
+runs the same `--dry-run` as the CLI and shows the exact change; **Save to mouse** only
+unlocks after a successful preview of the current edit, asks for confirmation, then does
+the backed-up, verified write. `Esc` cancels an edit.
+
+To open on a profile, or straight into its editor (handy for a Hyprland binding):
+
+```sh
+omarchy-shell shell toggle io.github.elberacasa.omalogi '{"profile":2,"edit":true,"tab":"buttons"}'
+```
+
+`tab` is `dpi`, `buttons` or `gshift`.
 
 ### Automatic switching
 

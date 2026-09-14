@@ -17,7 +17,8 @@ All notable changes are listed here. The project follows
 - `omalogi restore <FILE>` writes profile memory back from a backup, with `--dry-run`.
 - `omalogi daemon` switches profiles per app and per monitor from rules in
   `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.
-- Omarchy shell plugin: an overlay for profiles, DPI stages and bindings, and a bar
+- Omarchy shell plugin: an overlay to view, switch and edit profiles (preview, confirm,
+  then a verified write), which can open on a given profile or its editor, and a bar
   indicator for the active profile.
 - udev rule granting the active session access to the G502 X's HID++ interface only.
 - systemd user unit for the daemon.
