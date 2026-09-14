@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use omalogi::{
     device::{Info, OnboardState, ProfileSlot},
-    editing::{EditPlan, RestorePlan, RestoreReport, WriteReport},
+    editing::{EditPlan, RestorePlan, RestoreReport, TakesEffect, WriteReport},
     onboard::{
         Mode,
         format::{Binding, Profile},
@@ -82,12 +82,26 @@ pub fn edit_plan(plan: &EditPlan) -> String {
 pub fn write_report(report: &WriteReport) -> String {
     let mut out = format!("Profile {} updated and verified:\n", report.plan.profile);
     changes(&mut out, &report.plan.before, &report.plan.after);
+    takes_effect(&mut out, &report.takes_effect);
     let _ = writeln!(
         out,
         "Backup of the previous memory: {}",
         report.backup.display()
     );
     out
+}
+
+fn takes_effect(out: &mut String, takes_effect: &TakesEffect) {
+    let _ = match takes_effect {
+        TakesEffect::Now => writeln!(out, "The mouse loaded the change and is using it now."),
+        TakesEffect::WhenActivated => writeln!(
+            out,
+            "Not in use yet: the mouse loads a profile when it switches to it, so activate the profile to use the change."
+        ),
+        TakesEffect::NotLoaded { reason } => {
+            writeln!(out, "Saved, but the mouse has not loaded it: {reason}.")
+        }
+    };
 }
 
 pub fn restore_plan(plan: &RestorePlan) -> String {
@@ -102,11 +116,17 @@ pub fn restore_plan(plan: &RestorePlan) -> String {
 }
 
 pub fn restore_report(report: &RestoreReport) -> String {
-    format!(
-        "Restored and verified sectors {}.\nBackup of the memory before restoring: {}\n",
-        sector_list(&report.sectors),
+    let mut out = format!(
+        "Restored and verified sectors {}.\n",
+        sector_list(&report.sectors)
+    );
+    takes_effect(&mut out, &report.takes_effect);
+    let _ = writeln!(
+        out,
+        "Backup of the memory before restoring: {}",
         report.backup.display()
-    )
+    );
+    out
 }
 
 fn profile(out: &mut String, slot: &ProfileSlot) {

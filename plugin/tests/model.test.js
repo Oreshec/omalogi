@@ -76,13 +76,20 @@ test("deviceSummary shows the active firmware and live settings", () => {
 test("profile titles and status", () => {
   assert.equal(Model.profileTitle(slot({})), "Profile 2")
   assert.equal(Model.profileTitle(slot({ profile: { ...slot({}).profile, name: "Aim" } })), "2  Aim")
-  assert.equal(Model.profileStatus(slot({ active: true })), "Active  ·  1000 Hz")
-  assert.equal(Model.profileStatus(slot({ enabled: false })), "Disabled on the mouse")
+  assert.equal(Model.profileStatus(slot({ active: true })), "In use  ·  1000 Hz")
+  assert.equal(
+    Model.profileStatus(slot({ active: false })),
+    "Not in use  ·  1000 Hz  ·  changes apply when you activate it"
+  )
+  assert.match(Model.profileStatus(slot({ enabled: false })), /^Turned off on the mouse/)
 })
 
 test("activationRefusal explains why a profile cannot be activated", () => {
   assert.equal(Model.activationRefusal(slot({})), "")
-  assert.equal(Model.activationRefusal(slot({ enabled: false })), "Profile 2 is disabled on the mouse.")
+  assert.equal(
+    Model.activationRefusal(slot({ enabled: false })),
+    "Profile 2 is turned off on the mouse, so it can't be activated."
+  )
   assert.equal(Model.activationRefusal(slot({ active: true })), "Profile 2 is already active.")
 })
 
@@ -428,4 +435,39 @@ test("pictureViews keeps only usable views", () => {
     ["front"]
   )
   assert.equal(Model.viewWidth(picture.views[0], 280), 156)
+})
+
+test("applyNote says when a change reaches the mouse", () => {
+  assert.equal(
+    Model.applyNote({ position: 0, enabled: true, active: true }),
+    "Profile 1 is in use: the mouse switches profiles for a moment to load the change."
+  )
+  assert.match(Model.applyNote({ position: 1, enabled: true, active: false }), /once you activate it/)
+  assert.match(Model.applyNote({ position: 2, enabled: false, active: false }), /turned off on the mouse/)
+})
+
+test("savedNotice reports whether the mouse uses the change", () => {
+  const report = (takes_effect) => ({ profile: 2, backup: "/b.json", takes_effect })
+  assert.deepEqual(plain(Model.savedNotice(report({ state: "now" }))), {
+    text: "Profile 2 saved and verified. The mouse is using it now.",
+    isError: false
+  })
+  assert.match(Model.savedNotice(report({ state: "when_activated" })).text, /activate it/)
+  const notLoaded = Model.savedNotice(report({ state: "not_loaded", reason: "no other profile is enabled" }))
+  assert.equal(notLoaded.isError, true)
+  assert.match(notLoaded.text, /no other profile is enabled\.$/)
+})
+
+test("the DPI slider is logarithmic and snaps to the sensor's step", () => {
+  const bounds = { min: 100, max: 25600, step: 50 }
+  assert.equal(Model.dpiToPosition(100, bounds), 0)
+  assert.equal(Model.dpiToPosition(25600, bounds), 1000)
+  // Each doubling gets the same travel: 8 doublings from 100 to 25600.
+  assert.equal(Model.dpiToPosition(1600, bounds), 500)
+  for (const dpi of [400, 800, 1600, 3200, 6400]) {
+    assert.equal(Model.positionToDpi(Model.dpiToPosition(dpi, bounds), bounds), dpi)
+  }
+  assert.equal(Model.positionToDpi(0, bounds), 100)
+  assert.equal(Model.positionToDpi(1000, bounds), 25600)
+  assert.equal(Model.positionToDpi(437, bounds) % 50, 0)
 })

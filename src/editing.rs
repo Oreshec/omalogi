@@ -23,7 +23,7 @@ use crate::{
         report_rates_hz,
     },
     onboard::{
-        OnboardError, OnboardProfilesFeature,
+        Mode, OnboardError, OnboardProfilesFeature,
         edit::{ProfileEditor, Table},
         format::{self, Binding, DPI_STAGE_COUNT, Description, Profile},
     },
@@ -83,6 +83,16 @@ pub enum EditError {
         #[source]
         source: OnboardError,
     },
+    #[error(
+        "the change was written and verified, but the mouse is left on profile {current}: \
+         switching back to profile {profile} to load it failed"
+    )]
+    LeftOnOtherProfile {
+        profile: usize,
+        current: usize,
+        #[source]
+        source: SessionError,
+    },
 }
 
 fn restore_outcome(restored: &bool) -> &'static str {
@@ -127,12 +137,29 @@ pub struct EditPlan {
     edited: Vec<u8>,
 }
 
+/// When written profile memory reaches the mouse.
+///
+/// The firmware reads a profile's settings only when it switches to that profile.
+/// Writing its memory, or selecting the profile that is already active, leaves the
+/// loaded settings unchanged (verified on a G502 X, docs/hardware-tests.md).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum TakesEffect {
+    /// The active profile was loaded again, so the mouse uses the change now.
+    Now,
+    /// The change is not in the active profile; it applies once that profile is activated.
+    WhenActivated,
+    /// The active profile changed but could not be loaded again.
+    NotLoaded { reason: String },
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct WriteReport {
     #[serde(flatten)]
     pub plan: EditPlan,
     /// Profile memory as it was before the write.
     pub backup: PathBuf,
+    pub takes_effect: TakesEffect,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +182,7 @@ pub struct RestoreReport {
     pub sectors: Vec<u16>,
     /// Profile memory as it was before the restore.
     pub backup: PathBuf,
+    pub takes_effect: TakesEffect,
 }
 
 /// A backup file written by [`save_backup`].
@@ -367,10 +395,78 @@ impl Session {
         save_backup(&backup, backup_path)?;
         let feature = self.onboard_feature().await?;
         write_verified(&feature, plan.sector, &plan.edited, &plan.previous).await?;
+        let takes_effect = self.load_written(&[plan.sector]).await?;
         Ok(WriteReport {
             plan,
             backup: backup_path.to_owned(),
+            takes_effect,
         })
+    }
+
+    /// Makes the mouse load the active profile again when `written` includes its sector.
+    ///
+    /// Selecting the active profile does nothing, so this switches to another enabled
+    /// profile and straight back. Callers hold the device lock, which keeps the daemon
+    /// from acting on the brief switch.
+    async fn load_written(&mut self, written: &[u16]) -> Result<TakesEffect, EditError> {
+        let (active, other) = {
+            let feature = self.onboard_feature().await?;
+            if feature.mode().await.map_err(SessionError::from)? != Mode::Onboard {
+                // Onboard profiles are not in use at all in host mode.
+                return Ok(TakesEffect::WhenActivated);
+            }
+            let description = feature.description().await?;
+            let entries = read_directory(&feature, &description).await?;
+            let index = feature
+                .current_profile_index()
+                .await
+                .map_err(SessionError::from)?;
+            let active = format::current_profile_position(index).filter(|&position| {
+                entries
+                    .get(position)
+                    .is_some_and(|entry| written.contains(&entry.sector))
+            });
+            let Some(active) = active else {
+                return Ok(TakesEffect::WhenActivated);
+            };
+            let other = entries
+                .iter()
+                .enumerate()
+                .find(|&(position, entry)| position != active && entry.enabled)
+                .map(|(position, _)| position);
+            (active + 1, other.map(|position| position + 1))
+        };
+        let Some(other) = other else {
+            return Ok(TakesEffect::NotLoaded {
+                reason: "the mouse loads a profile when it switches to it, and no other \
+                         profile is enabled to switch through"
+                    .to_owned(),
+            });
+        };
+
+        let away = self.activate_profile(other).await;
+        let back = match self.activate_profile(active).await {
+            Ok(()) => Ok(()),
+            // Never leave the mouse on the other profile without trying again.
+            Err(_) => self.activate_profile(active).await,
+        };
+        match (away, back) {
+            (Ok(()), Ok(())) => Ok(TakesEffect::Now),
+            (Err(error), Ok(())) => Ok(TakesEffect::NotLoaded {
+                reason: format!(
+                    "switching to profile {other} to reload it failed: {}",
+                    crate::error_chain(&error)
+                ),
+            }),
+            (_, Err(source)) => {
+                let current = self.active_profile().await.ok().flatten().unwrap_or(other);
+                Err(EditError::LeftOnOtherProfile {
+                    profile: active,
+                    current,
+                    source,
+                })
+            }
+        }
     }
 
     /// The user sectors that differ from `backup`, after checking it belongs to this mouse.
@@ -439,9 +535,11 @@ impl Session {
         for write in &plan.writes {
             write_verified(&feature, write.sector, &write.data, &write.previous).await?;
         }
+        let takes_effect = self.load_written(&plan.sectors).await?;
         Ok(RestoreReport {
             sectors: plan.sectors,
             backup: backup_path.to_owned(),
+            takes_effect,
         })
     }
 

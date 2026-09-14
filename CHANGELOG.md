@@ -24,6 +24,10 @@ All notable changes are listed here. The project follows
   bar indicator for the active profile.
 - Keyboard shortcuts can use any standard key, including punctuation, navigation keys
   and F13–F24.
+- Edits and restores that change the profile in use take effect immediately: the mouse
+  only loads a profile when switching to it, so Omalogi switches away and back after the
+  verified write. Writes and restores report whether the change is in use now, applies
+  once the profile is activated, or could not be loaded.
 - `omalogi setup` installs the shell plugin built into the binary, puts the indicator on
   the bar, enables the daemon and checks device access, for the current user and without
   root. `--dry-run`, `--no-bar` and `--no-daemon`.

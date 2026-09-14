@@ -117,6 +117,37 @@ All 11 agree, so the overlay maps g*N* to slot N−1 for the G502 X only. `scrol
 `scroll2` mark wheel up and down, which have no slot. Result: **consistent**; a physical
 press per button has not been done.
 
+## 2026-09-13 — when written profile memory reaches the mouse
+
+Reported problem: DPI edits made in the overlay could not be felt. The two writes had
+gone to profile 2 while profile 1 was active. Tested on profile 2, watching the live
+sensor DPI (`omalogi info`):
+
+| Step | Live DPI |
+|---|---|
+| Profile 2 active (default stage 1600) | 1600 |
+| Write default stage 2400 to profile 2 | 1600 |
+| One second later | 1600 |
+| `setCurrentProfile` to profile 2 again (already active) | 1600 |
+| Switch to profile 1, then back to profile 2 | **2400** |
+
+Result: the firmware loads a profile's settings only when it switches to that profile.
+A write, or selecting the profile that is already active, is not enough. Profile 2 was
+restored from the write's backup afterwards.
+
+Fix: after a verified write or restore that changes the active profile, Omalogi switches
+to another enabled profile and straight back (under the device lock) and reports
+`takes_effect`. Verified with the release build:
+
+| Case | Reported | Live DPI |
+|---|---|---|
+| Edit profile 2 while profile 1 is active | `when_activated` | 1600, unchanged |
+| Edit profile 2 while it is active | `now` | 2400 immediately, profile 2 still active |
+| Restore profile 2 from that backup | `now` | 1600 |
+
+Result: **pass**. Profile 1 was active again at the end, and profile 2 was byte-identical
+to its state before the tests.
+
 ## Observations
 
 - 2026-09-13 20:00:34: one daemon poll failed with `ETIMEDOUT` (os error 110) from the

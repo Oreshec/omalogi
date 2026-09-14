@@ -319,7 +319,8 @@ Item {
       var report = exitCode === 0 ? Model.parseJson(stdout) : null
       if (report !== null) {
         root.reloadDraft = true
-        root.say("Profile " + report.profile + " saved to the mouse and verified. Backup: " + report.backup, false)
+        var notice = Model.savedNotice(report)
+        root.say(notice.text, notice.isError)
       } else {
         root.applyError = exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode)
       }
@@ -793,7 +794,8 @@ Item {
           if (root.confirmMode === "apply") {
             return "Write " + root.changes + (root.changes === 1 ? " change" : " changes") + " to profile " + number + "?\n\n"
               + root.previewText
-              + "\n\nAll profiles are backed up first, and the write is read back to verify it."
+              + "\n\n" + (root.selected ? Model.applyNote(root.selected) + " " : "")
+              + "All profiles are backed up first, and the write is read back to verify it."
           }
           if (root.confirmMode === "switch") return "Discard the unsaved changes to profile " + number + "?"
           return "Close and discard the unsaved changes to profile " + number + "?"

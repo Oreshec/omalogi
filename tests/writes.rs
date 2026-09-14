@@ -10,9 +10,9 @@ use std::{
 
 use omalogi::{
     device::{CLI_SOFTWARE_ID, Session},
-    editing::{BackupFile, EditError, ProfileChanges, save_backup},
+    editing::{BackupFile, EditError, ProfileChanges, TakesEffect, save_backup},
     hidraw::SUPPORTED_DEVICES,
-    onboard::format::{Binding, sector_crc_valid},
+    onboard::format::{Binding, crc_ccitt, sector_crc_valid},
 };
 use support::{FakeG502x, State, fixture_sectors};
 
@@ -312,6 +312,115 @@ async fn restores_profile_memory_from_a_backup() {
         h.session.restore(&backup, &h.backup_path("again")).await,
         Err(EditError::AlreadyRestored)
     ));
+}
+
+#[tokio::test]
+async fn a_write_to_the_active_profile_is_loaded_right_away() {
+    let mut h = Harness::new("active").await;
+    let report = h
+        .session
+        .apply_profile_changes(1, &rate(500), &h.backup_path("before"))
+        .await
+        .expect("write succeeds");
+
+    assert_eq!(report.takes_effect, TakesEffect::Now);
+    let state = h.state.lock().expect("state");
+    // Profile 1 was active: the mouse switched to profile 2 and back, loading the new memory.
+    assert_eq!(state.loads, [2, 1]);
+    assert_eq!(state.current_profile, 1);
+    assert_eq!(
+        state.loaded_sector.as_deref(),
+        Some(state.sectors[&1].as_slice())
+    );
+}
+
+#[tokio::test]
+async fn a_write_to_an_inactive_profile_applies_when_activated() {
+    let mut h = Harness::new("inactive").await;
+    let report = h
+        .session
+        .apply_profile_changes(2, &rate(500), &h.backup_path("before"))
+        .await
+        .expect("write succeeds");
+
+    assert_eq!(report.takes_effect, TakesEffect::WhenActivated);
+    let state = h.state.lock().expect("state");
+    assert!(state.loads.is_empty(), "the active profile is left alone");
+    assert_eq!(state.current_profile, 1);
+}
+
+#[tokio::test]
+async fn the_only_enabled_profile_is_written_but_reported_as_not_loaded() {
+    let mut h = Harness::new("single").await;
+    {
+        let mut state = h.state.lock().expect("state");
+        let directory = state.sectors.get_mut(&0).expect("directory sector");
+        // Entries are [sector hi, sector lo, enabled, reserved]; turn profile 2 off.
+        directory[6] = 0;
+        let body = directory.len() - 2;
+        let crc = crc_ccitt(&directory[..body]).to_be_bytes();
+        directory[body..].copy_from_slice(&crc);
+    }
+
+    let report = h
+        .session
+        .apply_profile_changes(1, &rate(500), &h.backup_path("before"))
+        .await
+        .expect("write succeeds");
+
+    assert!(
+        matches!(&report.takes_effect, TakesEffect::NotLoaded { reason } if reason.contains("no other profile")),
+        "{:?}",
+        report.takes_effect
+    );
+    let state = h.state.lock().expect("state");
+    assert!(state.loads.is_empty());
+    assert_eq!(state.committed, [1]);
+}
+
+#[tokio::test]
+async fn a_switch_the_mouse_ignores_is_reported_not_hidden() {
+    let mut h = Harness::new("ignored").await;
+    h.state.lock().expect("state").ignore_profile_switch = true;
+
+    let report = h
+        .session
+        .apply_profile_changes(1, &rate(500), &h.backup_path("before"))
+        .await
+        .expect("the verified write is still reported");
+
+    assert!(
+        matches!(&report.takes_effect, TakesEffect::NotLoaded { reason } if reason.contains("profile 2")),
+        "{:?}",
+        report.takes_effect
+    );
+    assert_eq!(h.state.lock().expect("state").current_profile, 1);
+}
+
+#[tokio::test]
+async fn restoring_the_active_profile_loads_it() {
+    let mut h = Harness::new("restore-load").await;
+    let before = h.backup_path("before");
+    h.session
+        .apply_profile_changes(1, &rate(500), &before)
+        .await
+        .expect("edit");
+    h.state.lock().expect("state").loads.clear();
+
+    let backup = BackupFile::load(&before).expect("backup loads");
+    let report = h
+        .session
+        .restore(&backup, &h.backup_path("before-restore"))
+        .await
+        .expect("restore succeeds");
+
+    assert_eq!(report.takes_effect, TakesEffect::Now);
+    let state = h.state.lock().expect("state");
+    assert_eq!(state.loads, [2, 1]);
+    assert_eq!(
+        state.loaded_sector.as_deref(),
+        Some(fixture_sectors()[&1].as_slice())
+    );
 }
 
 #[tokio::test]

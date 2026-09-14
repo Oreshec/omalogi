@@ -45,6 +45,11 @@ pub struct State {
     pub current_profile: u8,
     /// When set, `setCurrentProfile` succeeds without changing anything.
     pub ignore_profile_switch: bool,
+    /// Profiles the firmware loaded, in order. Like the real mouse, it loads a profile's
+    /// settings only when switching to a different profile.
+    pub loads: Vec<u8>,
+    /// The profile memory the firmware last loaded. Profile N lives in sector N here.
+    pub loaded_sector: Option<Vec<u8>>,
     /// Profile memory by sector number.
     pub sectors: HashMap<u16, Vec<u8>>,
     pub pending_write: Option<PendingWrite>,
@@ -129,11 +134,15 @@ impl FakeG502x {
             rate_current: hex_at("/report_rate/current_raw"),
             description: hex_at("/onboard/description"),
         };
+        let current_profile = hex_at("/onboard/current_profile")[1];
+        let sectors = fixture_sectors();
         let state = State {
             mode: hex_at("/onboard/mode")[0],
-            current_profile: hex_at("/onboard/current_profile")[1],
+            current_profile,
             ignore_profile_switch: false,
-            sectors: fixture_sectors(),
+            loads: Vec::new(),
+            loaded_sector: sectors.get(&u16::from(current_profile)).cloned(),
+            sectors,
             pending_write: None,
             corrupt_next_write: false,
             committed: Vec::new(),
@@ -247,6 +256,10 @@ impl FakeG502x {
                     return Err(ERR_INVALID_ARGUMENT);
                 }
                 if !state.ignore_profile_switch {
+                    if index != state.current_profile {
+                        state.loads.push(index);
+                        state.loaded_sector = state.sectors.get(&u16::from(index)).cloned();
+                    }
                     state.current_profile = index;
                 }
                 Ok(Vec::new())

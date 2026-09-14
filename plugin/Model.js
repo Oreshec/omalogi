@@ -54,15 +54,17 @@ function reportRate(profile) {
   return profile.report_rate_ms > 0 ? Math.round(1000 / profile.report_rate_ms) + " Hz" : "Unknown rate"
 }
 
+// Whether the mouse is using the profile, which decides when its changes are felt.
 function profileStatus(slot) {
-  if (!slot.enabled) return "Disabled on the mouse"
-  return (slot.active ? "Active" : "Enabled") + "  ·  " + reportRate(slot.profile)
+  if (!slot.enabled) return "Turned off on the mouse  ·  changes apply once it is turned on and activated"
+  if (slot.active) return "In use  ·  " + reportRate(slot.profile)
+  return "Not in use  ·  " + reportRate(slot.profile) + "  ·  changes apply when you activate it"
 }
 
 // Why a profile cannot be activated, or "" when it can.
 function activationRefusal(slot) {
   var number = slot.position + 1
-  if (!slot.enabled) return "Profile " + number + " is disabled on the mouse."
+  if (!slot.enabled) return "Profile " + number + " is turned off on the mouse, so it can't be activated."
   if (slot.active) return "Profile " + number + " is already active."
   return ""
 }
@@ -502,6 +504,42 @@ function slotEntries(slot, draft, original, catalog, table, buttonCount, verifie
       action: action
     }
   })
+}
+
+// ---- Applying --------------------------------------------------------------
+
+// What the confirmation says about when a change to `slot` reaches the mouse.
+function applyNote(slot) {
+  var number = slot.position + 1
+  if (slot.active) return "Profile " + number + " is in use: the mouse switches profiles for a moment to load the change."
+  if (slot.enabled) return "Profile " + number + " is not in use: the change applies once you activate it."
+  return "Profile " + number + " is turned off on the mouse: the change applies once it is turned on and activated."
+}
+
+// The footer message after a write, from `omalogi profiles edit --json`.
+function savedNotice(report) {
+  var saved = "Profile " + report.profile + " saved and verified. "
+  var effect = report.takes_effect || {}
+  if (effect.state === "now") return { text: saved + "The mouse is using it now.", isError: false }
+  if (effect.state === "when_activated") {
+    return { text: saved + "It is not the active profile: activate it to use the change.", isError: false }
+  }
+  return { text: saved + "The mouse has not loaded it: " + (effect.reason || "unknown reason") + ".", isError: true }
+}
+
+// The DPI slider is logarithmic, so 400 to 1600 gets as much travel as 6400 to 25600.
+var SLIDER_STEPS = 1000
+
+function dpiToPosition(dpi, bounds) {
+  if (dpi <= bounds.min) return 0
+  if (dpi >= bounds.max) return SLIDER_STEPS
+  return Math.round((SLIDER_STEPS * Math.log(dpi / bounds.min)) / Math.log(bounds.max / bounds.min))
+}
+
+function positionToDpi(position, bounds) {
+  var raw = bounds.min * Math.pow(bounds.max / bounds.min, position / SLIDER_STEPS)
+  var snapped = Math.round(raw / bounds.step) * bounds.step
+  return Math.max(bounds.min, Math.min(bounds.max, snapped))
 }
 
 // Picture views from `omalogi picture`, or [] when there is no usable picture.

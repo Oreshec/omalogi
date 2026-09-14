@@ -120,8 +120,12 @@ A shortcut is up to four modifiers (`ctrl`, `shift`, `alt`, `super`) and one key
 `pageup`, `delete`, `end`, `pagedown`, `left`, `right`, `up` or `down`.
 
 When stages change, the default and DPI-shift stages keep their DPI values; if a value
-is removed you are asked to pick one with `--default-dpi` or `--shift-dpi`. A change to
-a profile takes effect the next time that profile is selected.
+is removed you are asked to pick one with `--default-dpi` or `--shift-dpi`.
+
+The mouse loads a profile's settings only when it switches to that profile. So when you
+change the profile in use, Omalogi switches to another enabled profile and straight back
+after the verified write, and the mouse uses the change at once. A change to any other
+profile applies when you activate it. Every write and restore says which happened.
 
 Add `--json` to any command for machine-readable output.
 

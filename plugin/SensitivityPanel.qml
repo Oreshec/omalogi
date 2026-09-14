@@ -13,6 +13,8 @@ Item {
   property var bounds: ({ min: 100, max: 25600, step: 50 })
   property var rates: []
   property int stage: 0
+  // The value under the slider while it is dragged, or 0.
+  property int dragDpi: 0
 
   signal edited(var draft)
 
@@ -145,7 +147,7 @@ Item {
       visible: panel.stages.length > 0
 
       PanelSectionHeader {
-        text: "Stage " + (panel.current + 1)
+        text: "Stage " + (panel.current + 1) + "  ·  " + (panel.dragDpi > 0 ? panel.dragDpi : panel.currentDpi) + " DPI"
         foreground: Color.menu.text
       }
 
@@ -157,16 +159,21 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - field.width - parent.spacing
           height: Style.spacing.controlHeight
-          minimum: panel.bounds.min
-          maximum: panel.bounds.max
-          step: panel.bounds.step
+          // Logarithmic: the slider moves in positions, Model.js converts them to DPI.
+          minimum: 0
+          maximum: Model.SLIDER_STEPS
+          step: 1
           integer: true
-          value: panel.currentDpi
+          value: Model.dpiToPosition(panel.currentDpi, panel.bounds)
           trackColor: Util.alpha(Color.menu.text, 0.18)
           fillColor: Color.accent
           knobColor: Color.menu.text
           tickColor: Color.menu.background
-          onReleased: function(value) { panel.setCurrent(value) }
+          onMoved: function(position) { panel.dragDpi = Model.positionToDpi(position, panel.bounds) }
+          onReleased: function(position) {
+            panel.dragDpi = 0
+            panel.setCurrent(Model.positionToDpi(position, panel.bounds))
+          }
         }
 
         NumberField {
