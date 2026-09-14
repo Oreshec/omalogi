@@ -14,9 +14,11 @@ optdepends=(
   'hyprland: automatic switching per app and monitor'
 )
 install=omalogi.install
+# ring builds C code; with makepkg's LTO it becomes bitcode the Rust linker cannot read.
+options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-# Filled in by updpkgsums once the v$pkgver tag is published.
-sha256sums=('SKIP')
+
+sha256sums=('330288bdff4db2832f3ca1566540c32a3ef344e488d2304c816cc46c2a732766')
 
 prepare() {
   cd "$pkgname-$pkgver"

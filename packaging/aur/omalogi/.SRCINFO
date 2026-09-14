@@ -12,7 +12,8 @@ pkgbase = omalogi
 	depends = glibc
 	optdepends = omarchy: shell plugin and bar indicator
 	optdepends = hyprland: automatic switching per app and monitor
+	options = !lto
 	source = omalogi-0.1.0.tar.gz::https://github.com/elberacasa/omalogi/archive/refs/tags/v0.1.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 330288bdff4db2832f3ca1566540c32a3ef344e488d2304c816cc46c2a732766
 
 pkgname = omalogi
