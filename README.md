@@ -31,8 +31,8 @@ device (see [CONTRIBUTING.md](CONTRIBUTING.md) to add one).
 - **Backup and restore** of all profile memory.
 - **Automatic switching**: `omalogi daemon` watches Hyprland focus and activates the
   profile your rules pick for the focused app or monitor.
-- **Omarchy shell plugin**: a G HUB-style editor (the mouse with a card per button, an
-  action picker, a shortcut recorder, DPI stages and report rate) that saves each change
+- **Omarchy shell plugin**: a G HUB-style editor (the mouse with a label per button, a
+  searchable action library, a shortcut recorder, DPI levels and report rate) that saves each change
   to the mouse within about a third of a second, with Undo, and a bar indicator showing
   the active profile, both themed by Omarchy.
 - **JSON output** for every command, for scripts and Hyprland bindings.
