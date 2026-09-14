@@ -61,15 +61,27 @@ Hardware test results are logged in [docs/hardware-tests.md](docs/hardware-tests
 
 ## Install
 
-On Omarchy, one line:
+Omalogi is an Omarchy shell plugin. Add it like any other:
+
+```sh
+omarchy plugin add https://github.com/elberacasa/omalogi --enable
+```
+
+Then open Omalogi from the bar. The first time, it offers to install its helper: the
+`omalogi` command that talks to the mouse, and a udev rule that lets your user reach it
+(a plugin runs inside the shell and cannot open USB devices itself). That opens a
+terminal running the installer, which checks the download's SHA-256 and asks for sudo
+once. `omarchy plugin update` keeps the plugin current, and Omalogi tells you when its
+helper needs updating too.
+
+To install the helper yourself, which also adds the plugin if it is missing:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/elberacasa/omalogi/main/install.sh | bash
 ```
 
-It downloads the latest release and checks its SHA-256, installs `omalogi` to
-`~/.local/bin`, asks for sudo once to install the udev rule below, and runs
-`omalogi setup`. Run it again to update. On Arch you can instead install the
+It installs `omalogi` to `~/.local/bin`, the udev rule below, and runs `omalogi setup`;
+run it again to update. On Arch you can instead install the
 [`omalogi`](packaging/aur/omalogi) AUR package and run `omalogi setup`.
 
 ## Install from source

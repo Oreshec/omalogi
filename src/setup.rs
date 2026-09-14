@@ -258,6 +258,19 @@ pub fn setup(options: Options) -> Report {
 /// Returns false when the plugin could not be installed, which stops the setup.
 fn plugin_step(report: &mut Report, config_home: &Path, dry_run: bool) -> bool {
     let dir = config_home.join("omarchy/plugins").join(PLUGIN_ID);
+    // Added with `omarchy plugin add`: a git checkout that `omarchy plugin update` keeps
+    // current, and refuses to update once its files are changed, so never write into it.
+    if dir.join(".git").is_dir() {
+        report.push(
+            "plugin",
+            Status::UpToDate,
+            format!(
+                "{} was added with `omarchy plugin add`; `omarchy plugin update` keeps it current",
+                dir.display()
+            ),
+        );
+        return true;
+    }
     let existed = dir.exists();
     let files = match install_plugin(&dir, dry_run) {
         Ok(files) => files,
@@ -556,6 +569,29 @@ mod tests {
             .unwrap();
         assert_eq!(model.1, FileState::Updated);
         assert_ne!(fs::read_to_string(&model.0).unwrap(), "stale");
+    }
+
+    #[test]
+    fn a_plugin_added_with_omarchy_plugin_add_is_left_alone() {
+        let config = TempDir::new("git-managed");
+        let dir = config.0.join("omarchy/plugins").join(PLUGIN_ID);
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::create_dir_all(dir.join("plugin")).unwrap();
+        fs::write(dir.join("plugin/Model.js"), "from git").unwrap();
+
+        let mut report = Report {
+            dry_run: false,
+            steps: Vec::new(),
+        };
+        assert!(plugin_step(&mut report, &config.0, false));
+        assert_eq!(report.steps.len(), 1);
+        assert_eq!(report.steps[0].status, Status::UpToDate);
+        assert!(report.steps[0].detail.contains("omarchy plugin update"));
+        assert_eq!(
+            fs::read_to_string(dir.join("plugin/Model.js")).unwrap(),
+            "from git"
+        );
+        assert!(!dir.join("manifest.json").exists(), "nothing was written");
     }
 
     #[test]

@@ -593,3 +593,27 @@ test("gshiftButtons names the buttons that reach the G-Shift layer", () => {
   assert.deepEqual(plain(Model.gshiftButtons(holding(12), 11)), [], "a slot past the physical buttons cannot be pressed")
   assert.deepEqual(plain(Model.gshiftButtons(null, 11)), [])
 })
+
+test("the setup screen names the one step that reaches the mouse", () => {
+  assert.equal(Model.setupState(""), "")
+  assert.equal(Model.setupState(Model.errorMessage("", 127)), "helper")
+  assert.equal(
+    Model.setupState("permission denied opening /dev/hidraw8; install Omalogi's udev rule (packaging/udev/70-omalogi.rules) and replug the mouse"),
+    "access"
+  )
+  assert.equal(
+    Model.setupState("no supported Logitech device found; is the G502 X (046d:c099) plugged in over USB?"),
+    "device"
+  )
+  assert.equal(Model.setupState("device request failed"), "error")
+  assert.equal(Model.setupCopy("helper").action, "Install helper")
+  assert.equal(Model.setupCopy("access").action, "Allow access")
+  assert.equal(Model.setupCopy("outdated").action, "Update helper")
+  assert.equal(Model.setupCopy("device").action, "")
+  assert.equal(Model.setupCopy("error", "device request failed").body, "device request failed")
+  assert.equal(Model.helperOutdated({ info: {}, onboard: {} }), false, "helpers that do not report a protocol speak 1")
+  assert.equal(Model.helperOutdated({ helper: { version: "0.2.0", protocol: 1 } }), false)
+  assert.equal(Model.helperOutdated({ helper: { version: "0.0.1", protocol: 0.5 } }), true)
+  assert.match(Model.HELPER_INSTALL_COMMAND, /^curl -fsSL https:\/\/raw\.githubusercontent\.com\/elberacasa\/omalogi\/main\/install\.sh \| bash$/)
+  assert.match(Model.PLUGIN_ADD_COMMAND, /^omarchy plugin add https:\/\/github\.com\/elberacasa\/omalogi --enable$/)
+})

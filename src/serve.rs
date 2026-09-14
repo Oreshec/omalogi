@@ -38,6 +38,10 @@ use crate::{
 /// a CLI command run while the overlay is open never takes the server's replies.
 pub const SOFTWARE_ID: u8 = 0x0D;
 
+/// The version of this request format. The plugin, installed and updated on its own with
+/// `omarchy plugin add`, asks for a helper update when this is older than it needs.
+pub const PROTOCOL: u32 = 1;
+
 /// Where to save a backup for a device name.
 pub type BackupPath = fn(&str) -> Result<PathBuf, Box<dyn Error>>;
 
@@ -185,7 +189,11 @@ impl Server {
             Command::State => {
                 let info = self.session.info().await.map_err(|e| error_chain(&e))?;
                 let onboard = self.session.onboard().await.map_err(|e| error_chain(&e))?;
-                Ok(json!({ "info": info, "onboard": onboard }))
+                Ok(json!({
+                    "info": info,
+                    "onboard": onboard,
+                    "helper": { "version": env!("CARGO_PKG_VERSION"), "protocol": PROTOCOL },
+                }))
             }
             Command::Activate { profile } => {
                 self.session

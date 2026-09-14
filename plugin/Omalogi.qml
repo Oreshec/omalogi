@@ -27,6 +27,10 @@ Item {
   // `omalogi picture`: the mouse's picture with button positions, or null.
   property var picture: null
   property string loadError: ""
+  // The helper answered but is older than this plugin needs.
+  property bool helperOutdated: false
+  // What stands between the plugin and the mouse (see Model.setupState), or "".
+  readonly property string setupKind: root.helperOutdated ? "outdated" : Model.setupState(root.loadError)
   property string notice: ""
   property bool noticeIsError: false
   property int cursor: 0
@@ -136,6 +140,7 @@ Item {
         return
       }
       var first = root.onboard === null
+      root.helperOutdated = Model.helperOutdated(result)
       root.info = result.info
       root.onboard = result.onboard
       if (first) root.cursor = Model.initialCursor(result.onboard)
@@ -331,6 +336,13 @@ Item {
   function failLoad(message) {
     if (root.ready) root.say(message, true)
     else root.loadError = message
+  }
+
+  // Runs the helper installer in Omarchy's floating terminal, as the bar's update button
+  // runs omarchy-update, so the password prompt and progress stay in plain sight.
+  function installHelper() {
+    Util.execArgv(["omarchy-launch-floating-terminal-with-presentation", Model.HELPER_INSTALL_COMMAND])
+    root.say("Finish the installer in the terminal, then choose Try again.", false)
   }
 
   function daemonUpdated(state) {
@@ -697,39 +709,80 @@ Item {
 
           Label {
             anchors.centerIn: parent
-            visible: !root.ready && root.loadError === ""
+            visible: !root.ready && root.setupKind === ""
             opacity: 0.6
             text: "Reading your mouse…"
             font.pixelSize: Style.font.title
           }
 
+          // What stands between the plugin and the mouse, and the one step that fixes it.
           Column {
+            id: setupCard
+            readonly property var copy: Model.setupCopy(root.setupKind, root.loadError)
             anchors.centerIn: parent
-            width: Math.min(parent.width, Style.space(560))
-            visible: root.loadError !== ""
+            width: Math.min(parent.width, Style.space(520))
+            visible: root.setupKind !== ""
             spacing: Style.spacing.lg
+
+            PixelMark {
+              anchors.horizontalCenter: parent.horizontalCenter
+              width: Style.space(64)
+              height: width
+              busy: root.loading
+            }
 
             Label {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.Wrap
-              text: root.loadError
+              text: setupCard.copy.title
               font.pixelSize: Style.font.title
+              font.bold: true
             }
 
-            Button {
+            Label {
+              width: parent.width
+              horizontalAlignment: Text.AlignHCenter
+              wrapMode: Text.Wrap
+              opacity: 0.7
+              text: setupCard.copy.body
+            }
+
+            Row {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: "Try again"
-              bordered: true
-              foreground: Color.menu.text
-              onClicked: root.retry()
+              spacing: Style.spacing.md
+
+              Button {
+                visible: setupCard.copy.action !== ""
+                text: setupCard.copy.action
+                bordered: true
+                foreground: Color.accent
+                onClicked: root.installHelper()
+              }
+
+              Button {
+                text: "Try again"
+                bordered: true
+                foreground: Color.menu.text
+                onClicked: root.retry()
+              }
+            }
+
+            Label {
+              width: parent.width
+              visible: setupCard.copy.action !== ""
+              horizontalAlignment: Text.AlignHCenter
+              wrapMode: Text.WrapAnywhere
+              opacity: 0.45
+              text: "Opens a terminal and runs  " + Model.HELPER_INSTALL_COMMAND
+              font.pixelSize: Style.font.caption
             }
           }
 
           Item {
             id: pages
             anchors.fill: parent
-            visible: root.ready && root.loadError === ""
+            visible: root.ready && root.setupKind === ""
 
             // Pages.
             Column {

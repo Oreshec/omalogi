@@ -5,6 +5,15 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Added
+
+- Install Omalogi as a native Omarchy plugin with
+  `omarchy plugin add https://github.com/elberacasa/omalogi --enable`. When its helper is
+  missing, too old, or cannot open the mouse, Omalogi says what is wrong and runs the
+  installer in Omarchy's terminal. `omarchy plugin update` keeps the plugin current:
+  `omalogi setup` no longer writes into a plugin added this way, and `omalogi serve`
+  reports the helper's version and protocol.
+
 ## [0.1.0] - 2026-09-14
 
 ### Added
