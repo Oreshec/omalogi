@@ -285,6 +285,35 @@ test("action picker groups key combos and keeps unknown current bindings", () =>
   })
 })
 
+test("pictureViews keeps only usable views", () => {
+  assert.deepEqual(plain(Model.pictureViews(null)), [])
+  assert.deepEqual(plain(Model.pictureViews({})), [])
+  const picture = {
+    views: [
+      { name: "front", image: "/cache/front.png", width: 1556, height: 2800, hotspots: [] },
+      { name: "no-path", image: 3, width: 10, height: 10, hotspots: [] },
+      { name: "flat", image: "/cache/flat.png", width: 10, height: 0, hotspots: [] }
+    ]
+  }
+  assert.deepEqual(
+    plain(Model.pictureViews(picture)).map((view) => view.name),
+    ["front"]
+  )
+  assert.equal(Model.viewWidth(picture.views[0], 280), 156)
+})
+
+test("bindingRows pairs button and G-Shift labels by slot", () => {
+  assert.deepEqual(plain(Model.bindingRows(null)), [])
+  assert.deepEqual(
+    plain(Model.bindingRows({ buttons: ["left click", null, "back", null], gshift_buttons: [null, "mute"] })),
+    [
+      { slot: 0, button: "left click", gshift: null },
+      { slot: 1, button: null, gshift: "mute" },
+      { slot: 2, button: "back", gshift: null }
+    ]
+  )
+})
+
 test("boundSlots keeps slot numbers of bound buttons", () => {
   const slots = JSON.parse(JSON.stringify(Model.boundSlots(["left click", null, "DPI up"])))
   assert.deepEqual(slots, [

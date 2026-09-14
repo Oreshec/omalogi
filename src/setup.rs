@@ -267,14 +267,14 @@ fn plugin_step(report: &mut Report, config_home: &Path, dry_run: bool) -> bool {
         return true;
     }
     report.push("plugin", Status::Done, detail);
-    // A shell that already loaded the plugin caches its directory listing, so a new
-    // file only loads after a restart; changed files load on a rescan.
-    let added = files.iter().any(|(_, state)| *state == FileState::Created);
-    if existed && added {
+    // A running shell keeps the overlay it already loaded, even after a rescan: Omarchy
+    // opens a bar-widget plugin's overlay through the widget, which a rescan does not
+    // rebuild. A first install only needs the rescan to be discovered.
+    if existed {
         report.push(
             "shell",
             Status::Warning,
-            "new plugin files: run `omarchy restart shell` to load them",
+            "run `omarchy restart shell` to load the new version",
         );
     } else if let Err(reason) = run("omarchy-shell", &["-q", "shell", "rescanPlugins"]) {
         report.push("shell", Status::Warning, reason);

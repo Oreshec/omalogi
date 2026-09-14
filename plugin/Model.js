@@ -294,6 +294,32 @@ function hasChanges(draft, original) {
   return editArgs(draft, original, false).length > 3
 }
 
+// Picture views from `omalogi picture`, or [] when there is no usable picture.
+function pictureViews(picture) {
+  if (!picture || !Array.isArray(picture.views)) return []
+  return picture.views.filter(function(view) {
+    return view && typeof view.image === "string" && view.width > 0 && view.height > 0
+  })
+}
+
+// Width of a view drawn at `height`, keeping its aspect ratio.
+function viewWidth(view, height) {
+  return Math.round((height * view.width) / view.height)
+}
+
+// One row per slot bound in either table: {slot, button, gshift}, labels or null.
+function bindingRows(labels) {
+  var buttons = (labels && labels.buttons) || []
+  var gshift = (labels && labels.gshift_buttons) || []
+  var rows = []
+  for (var slot = 0; slot < Math.max(buttons.length, gshift.length); slot++) {
+    var button = buttons[slot] === undefined ? null : buttons[slot]
+    var shifted = gshift[slot] === undefined ? null : gshift[slot]
+    if (button !== null || shifted !== null) rows.push({ slot: slot, button: button, gshift: shifted })
+  }
+  return rows
+}
+
 // Bound slots as {slot, label}. omalogi sends null for unbound slots.
 function boundSlots(labels) {
   var slots = []

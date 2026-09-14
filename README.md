@@ -130,6 +130,14 @@ omarchy-shell shell toggle io.github.elberacasa.omalogi '{}'
 `↑`/`↓` or `j`/`k` select a profile, `Enter` activates it, `e` edits it, `r` refreshes,
 `Esc` closes.
 
+The profile view shows your mouse with a numbered badge on each button, matching the slot
+numbers in the table; hover either to find the other. Omalogi does not ship these
+pictures: the first time, `omalogi picture` downloads your model's render and button
+positions (about 9 MB for the G502 X) from `assets.openlogi.org`, the asset host OpenLogi
+uses, checks them against the host's checksums and caches them in
+`~/.cache/omalogi/pictures`. After that nothing is downloaded unless you run
+`omalogi picture --refresh`. Without a picture the overlay shows the table alone.
+
 The editor has tabs for DPI and report rate, buttons, and G-Shift buttons. **Preview**
 runs the same `--dry-run` as the CLI and shows the exact change; **Save to mouse** only
 unlocks after a successful preview of the current edit, asks for confirmation, then does

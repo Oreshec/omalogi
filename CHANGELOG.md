@@ -26,6 +26,9 @@ All notable changes are listed here. The project follows
 - udev rule granting the active session access to the G502 X's HID++ interface only.
 - systemd user unit for the daemon.
 - Arch Linux PKGBUILD (`packaging/aur/omalogi`).
+- `omalogi picture` downloads the mouse's render and button positions once from
+  assets.openlogi.org, verified by checksum and cached; the overlay shows the render
+  with a badge on each button, linked to the binding table.
 
 ### Supported devices
 

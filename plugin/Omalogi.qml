@@ -39,6 +39,10 @@ Item {
   property bool confirmOpen: false
   // What the open payload asked for, applied once profiles have loaded.
   property var pendingOpen: null
+  // `omalogi picture`: the mouse's picture with button positions, or null.
+  property var picture: null
+  // The slot under the pointer, in the picture or the binding table, or -1.
+  property int hoveredSlot: -1
 
   readonly property var profiles: root.onboard ? root.onboard.profiles : []
   readonly property var selected: root.profiles.length > 0
@@ -55,7 +59,8 @@ Item {
   readonly property int buttonCount: root.onboard ? root.onboard.description.button_count : 0
   readonly property string editTable: root.editTab === "gshift" ? "gshift" : "buttons"
 
-  readonly property int cardWidth: Math.min(Style.space(920), panel.width - Style.gapsOut * 2)
+  readonly property int cardWidth: Math.min(Style.space(1040), panel.width - Style.gapsOut * 2)
+  readonly property int pictureHeight: Style.space(330)
   readonly property int cardHeight: Math.min(Style.space(640), panel.height - Style.gapsOut * 2)
   readonly property int headerHeight: Math.max(Style.space(40), Style.font.heading + Style.spacing.controlPaddingY * 2)
   readonly property int listWidth: Style.space(220)
@@ -71,6 +76,7 @@ Item {
     root.pendingOpen = Model.openRequest(Model.parseJson(payloadJson))
     if (root.ready && !root.busy) root.applyOpenRequest()
     root.refresh()
+    if (root.picture === null && !pictureCommand.running) pictureCommand.start(["picture", "--json"])
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -96,6 +102,11 @@ Item {
       root.startEditing()
       if (root.editing) root.editTab = request.tab
     }
+  }
+
+  function hoverSlot(slot, hovered) {
+    if (hovered) root.hoveredSlot = slot
+    else if (root.hoveredSlot === slot) root.hoveredSlot = -1
   }
 
   function refresh() {
@@ -251,6 +262,15 @@ Item {
     }
   }
 
+  // The picture command reads sysfs and the cache, never the device, so it runs alongside
+  // device commands. Without a picture the overlay shows the binding table alone.
+  OmalogiCommand {
+    id: pictureCommand
+    onFinished: function(exitCode, stdout, stderr) {
+      root.picture = exitCode === 0 ? Model.parseJson(stdout) : null
+    }
+  }
+
   OmalogiCommand {
     id: previewCommand
     onFinished: function(exitCode, stdout, stderr) {
@@ -310,40 +330,87 @@ Item {
     font.pixelSize: Style.font.caption
   }
 
-  component BindingList: Column {
-    id: list
-    property string title: ""
-    property var entries: []
+  component BindingLabel: Text {
+    property var label: null
+    textFormat: Text.PlainText
+    text: label === null ? "—" : label
+    color: Color.menu.text
+    opacity: label === null ? 0.4 : 1
+    elide: Text.ElideRight
+    font.family: Style.font.menuFamily
+    font.pixelSize: Style.font.body
+  }
 
-    spacing: Style.spacing.xs
+  // Bindings by slot, with the G-Shift column when the profile binds any G-Shift button.
+  component BindingTable: Column {
+    id: table
+    property var rows: []
+    property bool showGShift: false
+    readonly property int columns: showGShift ? 2 : 1
+    readonly property int labelWidth: (width - root.slotColumnWidth - Style.spacing.md * columns) / columns
 
-    PanelSectionHeader {
-      text: list.title
-      foreground: Color.menu.text
+    spacing: Style.spacing.xxs
+
+    Row {
+      spacing: Style.spacing.md
+
+      Item { width: root.slotColumnWidth; height: 1 }
+
+      PanelSectionHeader {
+        width: table.labelWidth
+        text: "Buttons"
+        foreground: Color.menu.text
+      }
+
+      PanelSectionHeader {
+        width: table.labelWidth
+        visible: table.showGShift
+        text: "G-Shift"
+        foreground: Color.menu.text
+      }
     }
 
     Repeater {
-      model: list.entries
+      model: table.rows
 
-      delegate: Row {
+      delegate: Rectangle {
+        id: row
         required property var modelData
-        width: list.width
-        spacing: Style.spacing.md
+        readonly property bool hot: root.hoveredSlot === modelData.slot
+        width: table.width
+        height: rowContent.implicitHeight + Style.spacing.xxs * 2
+        radius: Style.cornerRadius
+        color: hot ? Util.alpha(Color.menu.text, 0.08) : "transparent"
 
-        Caption {
-          width: root.slotColumnWidth
-          text: "slot " + modelData.slot
-          font.pixelSize: Style.font.body
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          onContainsMouseChanged: root.hoverSlot(row.modelData.slot, containsMouse)
         }
 
-        Text {
-          width: parent.width - root.slotColumnWidth - parent.spacing
-          textFormat: Text.PlainText
-          text: modelData.label
-          color: Color.menu.text
-          elide: Text.ElideRight
-          font.family: Style.font.menuFamily
-          font.pixelSize: Style.font.body
+        Row {
+          id: rowContent
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.spacing.md
+
+          Caption {
+            width: root.slotColumnWidth
+            text: "slot " + row.modelData.slot
+            color: row.hot ? Color.accent : Color.menu.text
+            opacity: row.hot ? 1 : 0.6
+            font.pixelSize: Style.font.body
+          }
+
+          BindingLabel {
+            width: table.labelWidth
+            label: row.modelData.button
+          }
+
+          BindingLabel {
+            width: table.labelWidth
+            visible: table.showGShift
+            label: row.modelData.gshift
+          }
         }
       }
     }
@@ -662,20 +729,76 @@ Item {
               }
 
               Row {
+                id: buttonsArea
+                readonly property var views: Model.pictureViews(root.picture)
                 width: parent.width
                 spacing: Style.spacing.huge
 
-                BindingList {
-                  width: (parent.width - parent.spacing) / 2
-                  title: "Buttons"
-                  entries: root.selected ? Model.boundSlots(root.selected.labels.buttons) : []
+                Row {
+                  id: pictures
+                  visible: buttonsArea.views.length > 0
+                  spacing: Style.spacing.lg
+
+                  Repeater {
+                    model: buttonsArea.views
+
+                    delegate: Item {
+                      id: view
+                      required property var modelData
+                      width: Model.viewWidth(modelData, root.pictureHeight)
+                      height: root.pictureHeight
+
+                      Image {
+                        anchors.fill: parent
+                        source: "file://" + view.modelData.image
+                        sourceSize.height: root.pictureHeight * 2
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        smooth: true
+                        mipmap: true
+                      }
+
+                      Repeater {
+                        model: view.modelData.hotspots
+
+                        delegate: Rectangle {
+                          id: badge
+                          required property var modelData
+                          readonly property bool hot: root.hoveredSlot === modelData.slot
+                          width: Style.space(20)
+                          height: width
+                          radius: width / 2
+                          x: modelData.x * view.width - width / 2
+                          y: modelData.y * view.height - height / 2
+                          color: hot ? Color.accent : Util.alpha(Color.menu.background, 0.85)
+                          border.width: Math.max(1, Style.normalBorderWidth)
+                          border.color: hot ? Color.accent : Util.alpha(Color.menu.text, 0.7)
+
+                          Text {
+                            anchors.centerIn: parent
+                            textFormat: Text.PlainText
+                            text: String(badge.modelData.slot)
+                            color: badge.hot ? Color.menu.background : Color.menu.text
+                            font.family: Style.font.menuFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                          }
+
+                          MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onContainsMouseChanged: root.hoverSlot(badge.modelData.slot, containsMouse)
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
 
-                BindingList {
-                  width: (parent.width - parent.spacing) / 2
-                  title: "G-Shift"
-                  entries: root.selected ? Model.boundSlots(root.selected.labels.gshift_buttons) : []
-                  visible: entries.length > 0
+                BindingTable {
+                  width: parent.width - (pictures.visible ? pictures.width + parent.spacing : 0)
+                  rows: root.selected ? Model.bindingRows(root.selected.labels) : []
+                  showGShift: root.selected !== null && Model.boundSlots(root.selected.labels.gshift_buttons).length > 0
                 }
               }
             }
