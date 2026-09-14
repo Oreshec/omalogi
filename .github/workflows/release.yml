@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    # An older glibc than any Omarchy install, so the binary runs everywhere.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: The tag matches Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          test "v$version" = "$GITHUB_REF_NAME"
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --locked --release
+
+      - name: Package
+        run: |
+          name=omalogi-x86_64-unknown-linux-gnu
+          mkdir -p "dist/$name"
+          cp target/release/omalogi packaging/udev/70-omalogi.rules \
+            LICENSE-MIT LICENSE-APACHE README.md CHANGELOG.md "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          notes=$(awk -v v="$version" '
+            $0 ~ "^## \\[?" v "\\]?" { found = 1; next }
+            /^## / && found { exit }
+            found' CHANGELOG.md)
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 \
+            --title "Omalogi $GITHUB_REF_NAME" \
+            --notes "${notes:-See CHANGELOG.md.}"
