@@ -94,6 +94,29 @@ hidraw change event triggered, mouse not replugged:
 tagged. The session ACL on hidraw8 was already present from an earlier manual `setfacl`,
 so access coming from the rule alone is confirmed after the next replug.
 
+## 2026-09-13 — mouse picture and button positions
+
+`omalogi picture` downloaded `metadata.json`, `front.png` and `side.png` for depot `g502x`
+(matched on product id c099) from assets.openlogi.org in 1.4 s; each file matched the
+size and SHA-256 in the host's index. A second run with `--offline` used the cache only.
+
+The metadata names buttons `g502x_g<N>_m1`. With markers drawn on the renders, each
+position was compared with the firmware's default binding for slot N−1 on this mouse:
+
+| Id | Position on the render | Slot N−1 default |
+|---|---|---|
+| g1, g2, g3 | left button, right button, wheel | left, right, middle click |
+| g4 | rear thumb button | back |
+| g5 | front thumb button | DPI shift |
+| g6 | middle thumb button | forward |
+| g7, g8 | wheel tilt left, right | scroll left, scroll right |
+| g9 | button below the wheel | cycle profile |
+| g10, g11 | upper and lower left-edge buttons | DPI up, DPI down |
+
+All 11 agree, so the overlay maps g*N* to slot N−1 for the G502 X only. `scroll1` and
+`scroll2` mark wheel up and down, which have no slot. Result: **consistent**; a physical
+press per button has not been done.
+
 ## Observations
 
 - 2026-09-13 20:00:34: one daemon poll failed with `ETIMEDOUT` (os error 110) from the
