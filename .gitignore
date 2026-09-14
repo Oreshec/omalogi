@@ -2,5 +2,5 @@
 /target/
 __pycache__/
 
-# Raw device dumps contain the device Unit ID; commit only redacted fixtures
+# Raw device dumps contain the device's unit ID; commit only redacted fixtures
 /research/fixtures/
