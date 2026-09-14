@@ -115,9 +115,19 @@ enum ProfilesAction {
     /// Make an enabled profile active. Numbers are as listed by `omalogi profiles`.
     Activate { number: usize },
     /// Turn a profile on, so the mouse can switch to it. Profile memory is backed up first.
-    Enable { number: usize },
+    Enable {
+        number: usize,
+        /// Check the change, without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Turn a profile off. The profile in use and the last one turned on cannot be.
-    Disable { number: usize },
+    Disable {
+        number: usize,
+        /// Check the change, without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Change a profile's DPI stages, report rate or buttons.
     ///
     /// Profile memory is backed up to $XDG_STATE_HOME/omalogi/backups/ first, and the
@@ -329,13 +339,31 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
         DeviceCommand::Profiles {
             action:
                 Some(
-                    action @ (ProfilesAction::Enable { number }
-                    | ProfilesAction::Disable { number }),
+                    action @ (ProfilesAction::Enable { number, dry_run }
+                    | ProfilesAction::Disable { number, dry_run }),
                 ),
         } => {
             let enabled = matches!(action, ProfilesAction::Enable { .. });
+            let turned = if enabled { "on" } else { "off" };
             // Refuse before the backup, so a no-op or a refused change writes nothing at all.
             session.check_profile_enabled(number, enabled).await?;
+            if dry_run {
+                #[derive(Serialize)]
+                struct Planned {
+                    profile: usize,
+                    enabled: bool,
+                    dry_run: bool,
+                }
+                let planned = Planned {
+                    profile: number,
+                    enabled,
+                    dry_run,
+                };
+                output(json, &planned, || {
+                    format!("Profile {number} would be turned {turned}; nothing was written\n")
+                })?;
+                return Ok(());
+            }
             let path = default_backup_path(session.model().name)?;
             save_backup(&session.backup().await?, &path)?;
             session.set_profile_enabled(number, enabled).await?;

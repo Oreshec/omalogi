@@ -14,6 +14,12 @@ All notable changes are listed here. The project follows
 - `omalogi profiles edit <N>` changes DPI stages, the default and DPI-shift stages, the
   report rate and button and G-Shift bindings, with `--dry-run`. Each write is preceded
   by an automatic backup, verified by reading it back, and rolled back on a mismatch.
+  `--name` names the profile.
+- `omalogi profiles enable <N>` / `disable <N>` turn profiles on and off, with
+  `--dry-run`. The profile in use and the last profile turned on are refused.
+- `scripts/hardware-selftest.py`: a manual self-test that drives every overlay edit on a
+  dedicated test profile against a real mouse and checks the memory is byte for byte
+  as before.
 - `omalogi restore <FILE>` writes profile memory back from a backup, with `--dry-run`.
 - `omalogi daemon` switches profiles per app and per monitor from rules in
   `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.

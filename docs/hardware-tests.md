@@ -191,6 +191,39 @@ racing CLI reads, and the full save and undo sequence at the same time.
 
 Result: **pass**.
 
+## Full self-test through the overlay's server
+
+2026-09-14, G502 X (wired), firmware U1 60.00.B0009. Profile 3 was turned on with
+`omalogi profiles enable 3` and named with `profiles edit 3 --name "Omalogi Test"`
+(both verified by reading back), then `scripts/hardware-selftest.py` drove
+`omalogi serve` exactly as the overlay does:
+
+| Area | What was checked |
+|---|---|
+| Bindings | 43 actions (the catalog, 16 key combinations, `button:6`, `button:16`) rotated through all 11 buttons on both layers: every action on every slot, each read back with a label; a fresh read every 10 writes |
+| Refusals | 20 bad edits (unknown actions and keys, `button:0`/`17`, slot 16, DPI 50/30000/123, six stages, a default that is not a stage, 333 Hz, long or non-ASCII names, profile 9) wrote nothing |
+| Sensitivity | 1 to 5 stages from 100 to 25600 DPI, each stage as default with another as shift, all four report rates |
+| Names | set, 47 characters, cleared |
+| Undo | three writes undone one by one, each matching the state before it |
+| In use | activation; a new default DPI and report rate live at once (`takes_effect: now`); undo live at once; the profile in use and a profile already off refused; profile 4 turned on and off |
+| Restore | all profile memory byte for byte as before the test |
+
+A first run found 10 failures, all in the script (unused DPI stages read back as `null`).
+The second run: **1979 checks passed, 0 failed, in 30 s**.
+
+| Request | Count | Median | Max |
+|---|---|---|---|
+| `apply` | 87 | 269 ms | 686 ms (the first, with the backup) |
+| `undo` | 6 | 390 ms | 422 ms |
+| `state` | 13 | 375 ms | 386 ms |
+| `activate` | 4 | 66 ms | 76 ms |
+| `set_enabled` | 5 | 52 ms | 578 ms |
+
+Noted, not failures: slot 11 is refused as "not a button on this mouse", and unsorted
+stages such as 1600,800 are kept in that order (the overlay always sorts them).
+
+Result: **pass**.
+
 ## Observations
 
 - 2026-09-13 20:00:34: one daemon poll failed with `ETIMEDOUT` (os error 110) from the
@@ -201,8 +234,6 @@ Result: **pass**.
 
 ## Not yet tested on hardware
 
-- Button binding writes, and whether edits to the currently active profile apply
-  without re-selecting it.
 - The rollback path after a failed verification (tested on the emulated device only).
 - Unplugging the mouse during a write.
 - A write started from the overlay editor (preview and rendering are tested).

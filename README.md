@@ -99,6 +99,7 @@ the udev rule and the systemd unit; then run `omalogi setup` as your user.
 omalogi info                       # device, firmware, DPI, report rate, mode
 omalogi profiles                   # profiles, DPI stages, bindings
 omalogi profiles activate 2        # switch the active profile
+omalogi profiles enable 3          # turn a profile on (disable turns it off)
 omalogi backup                     # save all profile memory to a file
 omalogi restore FILE --dry-run     # see what restoring would write
 ```
@@ -108,6 +109,7 @@ Edit a profile, preview first:
 ```sh
 omalogi profiles edit 1 --dpi 400,800,1600,3200 --default-dpi 800 --dry-run
 omalogi profiles edit 1 --rate 500
+omalogi profiles edit 3 --name "Gaming"
 omalogi profiles edit 2 --button 6=key:ctrl+t --gshift 11=media:mute
 ```
 
