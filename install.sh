@@ -38,8 +38,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 say "Downloading $name.tar.gz"
-curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp/$name.tar.gz" "$base/$name.tar.gz"
-curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp/$name.tar.gz.sha256" "$base/$name.tar.gz.sha256"
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -o "$tmp/$name.tar.gz" "$base/$name.tar.gz"
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -o "$tmp/$name.tar.gz.sha256" "$base/$name.tar.gz.sha256"
 (cd "$tmp" && sha256sum --check --status "$name.tar.gz.sha256") \
   || die "the download does not match its checksum; nothing was installed"
 tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
