@@ -11,10 +11,11 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use omalogi::{
-    daemon,
+    assets, daemon,
     device::{CLI_SOFTWARE_ID, Session},
     editing::{BackupFile, ProfileChanges, save_backup},
     error_chain,
+    hidraw::find_supported,
     lock::DeviceLock,
     onboard::{
         action::{catalog, parse_action},
@@ -60,6 +61,19 @@ enum Command {
         /// Do not enable the automatic switching daemon.
         #[arg(long)]
         no_daemon: bool,
+    },
+    /// Show where the connected mouse's picture is cached, with each button's position.
+    ///
+    /// The picture is downloaded once from assets.openlogi.org, checked against the
+    /// host's checksums, and cached in $XDG_CACHE_HOME/omalogi/pictures. It does not
+    /// talk to the mouse, so it can run alongside other commands.
+    Picture {
+        /// Only use the cache; never download.
+        #[arg(long, conflicts_with = "refresh")]
+        offline: bool,
+        /// Check the host for an updated picture.
+        #[arg(long)]
+        refresh: bool,
     },
 }
 
@@ -141,6 +155,9 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Actions => print_actions(cli.json),
         Command::Daemon { config } => runtime.block_on(run_daemon(config)),
+        Command::Picture { offline, refresh } => {
+            show_picture(cli.json, assets::Options { offline, refresh })
+        }
         Command::Setup {
             dry_run,
             no_bar,
@@ -174,6 +191,29 @@ fn print_actions(json: bool) -> Result<(), Box<dyn Error>> {
             ));
             out
         })
+    })?;
+    Ok(())
+}
+
+fn show_picture(json: bool, options: assets::Options) -> Result<(), Box<dyn Error>> {
+    let node = find_supported()?;
+    let picture = assets::picture(node.device.product_id, options)?;
+    output(json, &picture, || {
+        let mut out = format!("{} picture ({}):\n", node.device.name, picture.depot);
+        for view in &picture.views {
+            out.push_str(&format!(
+                "  {:<5}  {}  ({} button positions)\n",
+                view.name,
+                view.image.display(),
+                view.hotspots.len()
+            ));
+        }
+        if !picture.slots_verified {
+            out.push_str(
+                "  Button positions are not verified for this device, so none are shown.\n",
+            );
+        }
+        out
     })?;
     Ok(())
 }

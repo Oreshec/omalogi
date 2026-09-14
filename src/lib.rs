@@ -1,5 +1,6 @@
 //! Omalogi: Logitech G-series configuration for Omarchy.
 
+pub mod assets;
 pub mod daemon;
 pub mod device;
 pub mod editing;
