@@ -67,20 +67,6 @@ function activationRefusal(slot) {
   return ""
 }
 
-// DPI stages in order, skipping unused ones, marking the default and shift stages.
-function dpiStages(profile) {
-  var stages = []
-  profile.dpi_stages.forEach(function(dpi, index) {
-    if (dpi === null) return
-    stages.push({
-      dpi: dpi,
-      isDefault: index === profile.default_dpi_index,
-      isShift: index === profile.shift_dpi_index
-    })
-  })
-  return stages
-}
-
 // Why the daemon activated this profile, or "" when it did not (or is not running).
 function daemonNote(daemon, slot) {
   if (!daemon || !daemon.connected || !daemon.source || !slot.active) return ""
@@ -117,14 +103,17 @@ function indicatorTooltip(daemon) {
   return text
 }
 
-// What an open payload asks for, or null. Unknown or malformed fields are ignored.
+var TABS = ["buttons", "gshift", "sensitivity"]
+
+// What an open payload asks for, or null: {"profile": 2, "tab": "gshift", "button": 3}.
+// Unknown or malformed fields are ignored.
 function openRequest(payload) {
   if (!payload || typeof payload !== "object") return null
   var profile = Number.isInteger(payload.profile) && payload.profile >= 1 ? payload.profile : null
-  var edit = payload.edit === true
-  var tab = ["dpi", "buttons", "gshift"].indexOf(payload.tab) !== -1 ? payload.tab : "dpi"
-  if (profile === null && !edit) return null
-  return { profile: profile, edit: edit, tab: tab }
+  var tab = TABS.indexOf(payload.tab) !== -1 ? payload.tab : null
+  var button = Number.isInteger(payload.button) && payload.button >= 0 ? payload.button : null
+  if (profile === null && tab === null && button === null) return null
+  return { profile: profile, tab: tab, button: button }
 }
 
 // ---- Editing ---------------------------------------------------------------
@@ -229,14 +218,6 @@ function nextStageDpi(draft, bounds) {
   return Math.max(bounds.min, Math.min(bounds.max, doubled))
 }
 
-function stageOptions(draft) {
-  return draft.dpiStages.map(function(dpi) { return { value: String(dpi), label: dpi + " DPI" } })
-}
-
-function rateOptions(info) {
-  return ((info && info.report_rates_hz) || []).map(function(hz) { return { value: String(hz), label: hz + " Hz" } })
-}
-
 // Slots that are physical buttons, plus slots the profile already binds (the wheel).
 function editableSlots(original, table, buttonCount) {
   var slots = []
@@ -259,16 +240,6 @@ function actionChoice(action) {
   return isKeyAction(action) ? "key:" : (action || "")
 }
 
-// Picker options from `omalogi actions`, plus the current binding when the list lacks it.
-function actionOptions(catalog, current) {
-  var options = (catalog || []).map(function(action) {
-    return { value: action.value, label: action.label, description: action.group }
-  })
-  var choice = actionChoice(current)
-  var known = options.some(function(option) { return option.value === choice })
-  if (choice !== "" && !known) options.unshift({ value: choice, label: choice, description: "Current" })
-  return options
-}
 
 // Arguments for `omalogi profiles edit`, covering only what differs from `original`.
 function editArgs(draft, original, dryRun) {
@@ -290,9 +261,6 @@ function editArgs(draft, original, dryRun) {
   return args
 }
 
-function hasChanges(draft, original) {
-  return editArgs(draft, original, false).length > 3
-}
 
 // ---- Shortcut recorder -----------------------------------------------------
 // Linux evdev key codes (Qt's nativeScanCode minus 8 on Wayland) to the key names
@@ -456,6 +424,86 @@ function changeCount(draft, original) {
   return count
 }
 
+// Entries by slot number.
+function indexBySlot(entries) {
+  var index = {}
+  ;(entries || []).forEach(function(entry) { index[entry.slot] = entry })
+  return index
+}
+
+// Entries with no position on any picture view.
+function entriesWithoutHotspot(entries, views) {
+  var placed = {}
+  ;(views || []).forEach(function(view) {
+    ;(view.hotspots || []).forEach(function(hotspot) { placed[hotspot.slot] = true })
+  })
+  return (entries || []).filter(function(entry) { return !placed[entry.slot] })
+}
+
+// The tallest picture height, between `min` and `max`, at which the views fit `width`.
+function fitPictureHeight(views, width, viewGap, min, max) {
+  var aspect = 0
+  ;(views || []).forEach(function(view) { aspect += view.width / view.height })
+  if (aspect <= 0) return max
+  var height = (width - viewGap * (views.length - 1)) / aspect
+  return Math.floor(Math.max(min, Math.min(max, height)))
+}
+
+// Picker sections flattened for a list: each section's header row, then its actions.
+function actionRows(sections) {
+  var rows = []
+  ;(sections || []).forEach(function(section) {
+    rows.push({ kind: "header", group: section.group })
+    section.actions.forEach(function(action) {
+      rows.push({ kind: "action", value: action.value, label: action.label, group: section.group })
+    })
+  })
+  return rows
+}
+
+// Held modifiers as the recorder shows them: "Ctrl+Shift".
+function modifiersLabel(modifiers) {
+  var parts = []
+  if (modifiers & QT_CTRL) parts.push("Ctrl")
+  if (modifiers & QT_SHIFT) parts.push("Shift")
+  if (modifiers & QT_ALT) parts.push("Alt")
+  if (modifiers & QT_META) parts.push("Super")
+  return parts.join("+")
+}
+
+// A button's name: G HUB's G-number where the picture's positions are verified.
+function buttonName(slot, verified) {
+  return verified ? "G" + (slot + 1) : "Slot " + slot
+}
+
+// How an action reads: the mouse's own label while unchanged, otherwise the catalog
+// label, the shortcut, or the action text itself.
+function actionLabel(catalog, action, deviceLabel, changed) {
+  if (!changed && deviceLabel) return deviceLabel
+  if (action === null || action === undefined) return deviceLabel || "Unsupported binding"
+  if (isKeyAction(action)) return comboLabel(keyCombo(action))
+  var matches = (catalog || []).filter(function(entry) { return entry.value === action })
+  return matches.length > 0 ? matches[0].label : action
+}
+
+// Canvas and inspector entries for one table ("buttons" or "gshift") of a profile.
+function slotEntries(slot, draft, original, catalog, table, buttonCount, verified) {
+  if (!slot || !draft || !original) return []
+  var labels = (table === "gshift" ? slot.labels.gshift_buttons : slot.labels.buttons) || []
+  return editableSlots(original, table, buttonCount).map(function(number) {
+    var action = draft[table][number]
+    var changed = action !== original[table][number]
+    return {
+      slot: number,
+      // Slots past the physical buttons (extra wheel bindings) have no G-number.
+      name: buttonName(number, verified && number < buttonCount),
+      label: actionLabel(catalog, action, labels[number], changed),
+      changed: changed,
+      action: action
+    }
+  })
+}
+
 // Picture views from `omalogi picture`, or [] when there is no usable picture.
 function pictureViews(picture) {
   if (!picture || !Array.isArray(picture.views)) return []
@@ -469,24 +517,3 @@ function viewWidth(view, height) {
   return Math.round((height * view.width) / view.height)
 }
 
-// One row per slot bound in either table: {slot, button, gshift}, labels or null.
-function bindingRows(labels) {
-  var buttons = (labels && labels.buttons) || []
-  var gshift = (labels && labels.gshift_buttons) || []
-  var rows = []
-  for (var slot = 0; slot < Math.max(buttons.length, gshift.length); slot++) {
-    var button = buttons[slot] === undefined ? null : buttons[slot]
-    var shifted = gshift[slot] === undefined ? null : gshift[slot]
-    if (button !== null || shifted !== null) rows.push({ slot: slot, button: button, gshift: shifted })
-  }
-  return rows
-}
-
-// Bound slots as {slot, label}. omalogi sends null for unbound slots.
-function boundSlots(labels) {
-  var slots = []
-  ;(labels || []).forEach(function(label, slot) {
-    if (label !== null) slots.push({ slot: slot, label: label })
-  })
-  return slots
-}

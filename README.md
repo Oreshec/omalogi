@@ -7,7 +7,7 @@ per monitor, and an overlay and bar indicator that follow your Omarchy theme.
 Omalogi talks to the mouse over HID++ 2.0, writes only what you change, backs up the
 mouse's profile memory before every write, and reads every write back to verify it.
 
-![The Omalogi overlay showing the G502 X's onboard profiles](docs/images/overlay-profiles.png)
+![Omalogi editing the G502 X: the mouse with a card per button, and the action picker](docs/images/overlay-buttons.png)
 
 ## Supported devices
 
@@ -29,9 +29,9 @@ device (see [CONTRIBUTING.md](CONTRIBUTING.md) to add one).
 - **Backup and restore** of all profile memory.
 - **Automatic switching**: `omalogi daemon` watches Hyprland focus and activates the
   profile your rules pick for the focused app or monitor.
-- **Omarchy shell plugin**: an overlay to switch and edit profiles (DPI stages, report
-  rate, button and G-Shift bindings, with a preview before every write) and a bar
-  indicator showing the active profile, both themed by Omarchy.
+- **Omarchy shell plugin**: a G HUB-style editor (the mouse with a card per button, an
+  action picker, a shortcut recorder, DPI stages and report rate, reviewed before every
+  write) and a bar indicator showing the active profile, both themed by Omarchy.
 - **JSON output** for every command, for scripts and Hyprland bindings.
 
 ## Safety
@@ -113,6 +113,12 @@ Button actions: `left`, `right`, `middle`, `back`, `forward`, `button:N`, `dpi-u
 `volume-down`, `mute`, `play-pause`, `next-track`, `previous-track`), `disabled`.
 Slot numbers are the ones `omalogi profiles` lists.
 
+A shortcut is up to four modifiers (`ctrl`, `shift`, `alt`, `super`) and one key: `a`–`z`,
+`0`–`9`, `f1`–`f24`, `enter`, `esc`, `backspace`, `tab`, `space`, `minus`, `equal`,
+`leftbracket`, `rightbracket`, `backslash`, `semicolon`, `apostrophe`, `grave`, `comma`,
+`period`, `slash`, `capslock`, `printscreen`, `scrolllock`, `pause`, `insert`, `home`,
+`pageup`, `delete`, `end`, `pagedown`, `left`, `right`, `up` or `down`.
+
 When stages change, the default and DPI-shift stages keep their DPI values; if a value
 is removed you are asked to pick one with `--default-dpi` or `--shift-dpi`. A change to
 a profile takes effect the next time that profile is selected.
@@ -127,33 +133,40 @@ Open it from the bar indicator or with:
 omarchy-shell shell toggle io.github.elberacasa.omalogi '{}'
 ```
 
-`↑`/`↓` or `j`/`k` select a profile, `Enter` activates it, `e` edits it, `r` refreshes,
-`Esc` closes.
+Every profile opens ready to edit, including profiles that are turned off on the mouse.
 
-The profile view shows your mouse with a numbered badge on each button, matching the slot
-numbers in the table; hover either to find the other. Omalogi does not ship these
-pictures: the first time, `omalogi picture` downloads your model's render and button
-positions (about 9 MB for the G502 X) from `assets.openlogi.org`, the asset host OpenLogi
-uses, checks them against the host's checksums and caches them in
-`~/.cache/omalogi/pictures`. After that nothing is downloaded unless you run
-`omalogi picture --refresh`. Without a picture the overlay shows the table alone.
+- **Buttons** and **G-Shift** show the mouse with a card for each button. Click a button
+  or its card to see what it does and pick something else: actions are grouped (mouse,
+  keyboard, media, DPI, profiles, scroll) and searchable. **Keyboard shortcut…** records
+  the keys you press, as physical keys, so your keyboard layout does not matter.
+- **Sensitivity** holds the DPI stages (select one to set its value with the slider, make
+  it the default or DPI shift stage, or remove it) and the report rate.
+- Changes are not written straight away. Changed buttons are marked, and the footer
+  counts the unsaved changes. **Apply to mouse** runs the same `--dry-run` as the CLI,
+  shows exactly what will be written, and only writes after you confirm: profile memory
+  is backed up first and the write is read back to verify it. **Revert** drops the
+  changes; switching profiles or closing asks before discarding them.
 
-The editor has tabs for DPI and report rate, buttons, and G-Shift buttons. **Preview**
-runs the same `--dry-run` as the CLI and shows the exact change; **Save to mouse** only
-unlocks after a successful preview of the current edit, asks for confirmation, then does
-the backed-up, verified write. `Esc` cancels an edit.
+Keys: `↑`/`↓` or `j`/`k` switch profile, `1` `2` `3` switch view, `Enter` activates the
+profile, `Ctrl+S` applies, `r` refreshes, `Esc` clears the selection and then closes.
 
-| DPI and report rate | Buttons |
+| G-Shift | Sensitivity |
 | --- | --- |
-| ![Editing DPI stages and report rate](docs/images/overlay-edit-dpi.png) | ![Editing button bindings](docs/images/overlay-edit-buttons.png) |
+| ![The G-Shift layer with keyboard shortcuts](docs/images/overlay-gshift.png) | ![DPI stages and report rate](docs/images/overlay-sensitivity.png) |
 
-To open on a profile, or straight into its editor (handy for a Hyprland binding):
+Omalogi does not ship the mouse pictures: the first time, `omalogi picture` downloads your
+model's render and button positions (about 9 MB for the G502 X) from `assets.openlogi.org`,
+the asset host OpenLogi uses, checks them against the host's checksums and caches them in
+`~/.cache/omalogi/pictures`. After that nothing is downloaded unless you run
+`omalogi picture --refresh`. Without a picture the buttons are shown as cards alone.
+
+To open on a profile, view or button (handy for a Hyprland binding):
 
 ```sh
-omarchy-shell shell toggle io.github.elberacasa.omalogi '{"profile":2,"edit":true,"tab":"buttons"}'
+omarchy-shell shell toggle io.github.elberacasa.omalogi '{"profile":2,"tab":"gshift","button":3}'
 ```
 
-`tab` is `dpi`, `buttons` or `gshift`.
+`tab` is `buttons`, `gshift` or `sensitivity`; `button` is a slot number.
 
 ### Automatic switching
 

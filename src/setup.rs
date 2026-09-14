@@ -35,6 +35,18 @@ pub const PLUGIN_FILES: &[(&str, &str)] = &[
         include_str!("../plugin/Indicator.qml"),
     ),
     ("plugin/Model.js", include_str!("../plugin/Model.js")),
+    (
+        "plugin/DeviceCanvas.qml",
+        include_str!("../plugin/DeviceCanvas.qml"),
+    ),
+    (
+        "plugin/ActionInspector.qml",
+        include_str!("../plugin/ActionInspector.qml"),
+    ),
+    (
+        "plugin/SensitivityPanel.qml",
+        include_str!("../plugin/SensitivityPanel.qml"),
+    ),
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -530,6 +542,22 @@ mod tests {
             .unwrap();
         assert_eq!(model.1, FileState::Updated);
         assert_ne!(fs::read_to_string(&model.0).unwrap(), "stale");
+    }
+
+    #[test]
+    fn every_plugin_file_is_built_in() {
+        let plugin = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin");
+        for entry in fs::read_dir(&plugin).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                continue;
+            }
+            let relative = format!("plugin/{}", entry.file_name().to_string_lossy());
+            assert!(
+                PLUGIN_FILES.iter().any(|(path, _)| *path == relative),
+                "{relative} is not in PLUGIN_FILES"
+            );
+        }
     }
 
     #[test]

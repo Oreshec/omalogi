@@ -17,9 +17,13 @@ All notable changes are listed here. The project follows
 - `omalogi restore <FILE>` writes profile memory back from a backup, with `--dry-run`.
 - `omalogi daemon` switches profiles per app and per monitor from rules in
   `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.
-- Omarchy shell plugin: an overlay to view, switch and edit profiles (preview, confirm,
-  then a verified write), which can open on a given profile or its editor, and a bar
-  indicator for the active profile.
+- Omarchy shell plugin: a G HUB-style editor with the mouse, a card and leader line per
+  button, a grouped and searchable action picker, a shortcut recorder, a G-Shift layer,
+  DPI stages and report rate. Changes collect until **Apply to mouse**, which previews,
+  confirms and does a verified write. Opens on a given profile, view or button. Plus a
+  bar indicator for the active profile.
+- Keyboard shortcuts can use any standard key, including punctuation, navigation keys
+  and F13–F24.
 - `omalogi setup` installs the shell plugin built into the binary, puts the indicator on
   the bar, enables the daemon and checks device access, for the current user and without
   root. `--dry-run`, `--no-bar` and `--no-daemon`.

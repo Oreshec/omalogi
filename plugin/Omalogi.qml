@@ -6,8 +6,8 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Omalogi's overlay: the connected mouse and its onboard profiles, with editing.
-// Every device read and write goes through the omalogi CLI, one command at a time
+// Omalogi's overlay: the connected mouse's onboard profiles, edited the way G HUB does
+// it. Every device read and write goes through the omalogi CLI, one command at a time
 // (they share a HID++ software id), so the plugin never touches the device itself.
 Item {
   id: root
@@ -20,29 +20,33 @@ Item {
   property bool mounted: false
   property var info: null
   property var onboard: null
+  // The daemon's published state, or null when it is not running.
+  property var daemon: null
+  property var catalog: []
+  // `omalogi picture`: the mouse's picture with button positions, or null.
+  property var picture: null
   property string loadError: ""
   property string notice: ""
   property bool noticeIsError: false
   property int cursor: 0
-  // The daemon's published state, or null when it is not running.
-  property var daemon: null
 
-  // Editing: `draft` is replaced on every change; `original` is the profile as read.
-  property bool editing: false
-  property var draft: null
+  // "buttons", "gshift" or "sensitivity".
+  property string tab: "buttons"
+  // The selected profile as read from the mouse, and with the unsaved edits.
   property var original: null
-  property var catalog: []
-  property string editTab: "dpi"
-  property string previewText: ""
-  property bool previewIsError: false
-  property bool previewOk: false
-  property bool confirmOpen: false
+  property var draft: null
+  property int selectedSlot: -1
+  property int hoveredSlot: -1
+  // Set by a write, so the next profile read replaces the draft.
+  property bool reloadDraft: false
   // What the open payload asked for, applied once profiles have loaded.
   property var pendingOpen: null
-  // `omalogi picture`: the mouse's picture with button positions, or null.
-  property var picture: null
-  // The slot under the pointer, in the picture or the binding table, or -1.
-  property int hoveredSlot: -1
+
+  // The open confirmation: "apply", "switch" (to `pendingCursor`), "close", or "".
+  property string confirmMode: ""
+  property int pendingCursor: -1
+  property string previewText: ""
+  property string applyError: ""
 
   readonly property var profiles: root.onboard ? root.onboard.profiles : []
   readonly property var selected: root.profiles.length > 0
@@ -52,36 +56,46 @@ Item {
   readonly property bool busy: infoCommand.running || profilesCommand.running || activateCommand.running
     || previewCommand.running || saveCommand.running
   readonly property bool ready: root.info !== null && root.onboard !== null
-  readonly property string unreadable: "omalogi answered with output Omalogi could not read."
-  readonly property string footerText: root.notice !== "" ? root.notice : Model.daemonProblem(root.daemon)
-  readonly property bool footerIsError: root.notice !== "" ? root.noticeIsError : root.footerText !== ""
-  readonly property var dpiBounds: Model.dpiBounds(root.info)
+  readonly property int changes: Model.changeCount(root.draft, root.original)
+  readonly property bool dirty: root.changes > 0
+  readonly property var views: Model.pictureViews(root.picture)
+  readonly property bool slotsVerified: root.picture !== null && root.picture.slots_verified === true
   readonly property int buttonCount: root.onboard ? root.onboard.description.button_count : 0
-  readonly property string editTable: root.editTab === "gshift" ? "gshift" : "buttons"
+  readonly property string table: root.tab === "gshift" ? "gshift" : "buttons"
+  readonly property var entries: Model.slotEntries(
+    root.selected, root.draft, root.original, root.catalog, root.table, root.buttonCount, root.slotsVerified)
+  readonly property var selectedEntry: {
+    var entry = Model.indexBySlot(root.entries)[root.selectedSlot]
+    return entry === undefined ? null : entry
+  }
+  readonly property bool anyDisabled: root.profiles.some(function(slot) { return !slot.enabled })
+  readonly property string unreadable: "omalogi answered with output Omalogi could not read."
 
-  readonly property int cardWidth: Math.min(Style.space(1040), panel.width - Style.gapsOut * 2)
-  readonly property int pictureHeight: Style.space(330)
-  readonly property int cardHeight: Math.min(Style.space(640), panel.height - Style.gapsOut * 2)
+  readonly property int cardWidth: Math.min(Style.space(1400), panel.width - Style.gapsOut * 2)
+  readonly property int cardHeight: Math.min(Style.space(820), panel.height - Style.gapsOut * 2)
   readonly property int headerHeight: Math.max(Style.space(40), Style.font.heading + Style.spacing.controlPaddingY * 2)
-  readonly property int listWidth: Style.space(220)
-  readonly property int slotColumnWidth: Style.space(56)
+  readonly property int railWidth: Style.space(196)
+  readonly property int inspectorWidth: Style.space(340)
 
-  // payloadJson may name a profile to select and open in the editor, for keybindings:
-  // {"profile": 3, "edit": true, "tab": "buttons"}.
   function open(payloadJson) {
     exitAnimation.stop()
     root.mounted = true
     root.opened = true
     enterAnimation.restart()
     root.pendingOpen = Model.openRequest(Model.parseJson(payloadJson))
-    if (root.ready && !root.busy) root.applyOpenRequest()
+    if (root.ready) root.applyOpenRequest()
     root.refresh()
+    if (root.catalog.length === 0 && !catalogCommand.running) catalogCommand.start(["actions", "--json"])
     if (root.picture === null && !pictureCommand.running) pictureCommand.start(["picture", "--json"])
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
     if (!root.mounted || !root.opened) return
+    if (root.dirty) {
+      root.ask("close")
+      return
+    }
     root.opened = false
     enterAnimation.stop()
     exitAnimation.restart()
@@ -89,24 +103,9 @@ Item {
 
   function finishClose() {
     root.mounted = false
-    root.stopEditing()
+    root.confirmMode = ""
+    root.selectedSlot = -1
     if (root.shell && root.manifest) root.shell.hide(root.manifest.id)
-  }
-
-  function applyOpenRequest() {
-    var request = root.pendingOpen
-    if (request === null || !root.ready) return
-    root.pendingOpen = null
-    if (request.profile !== null) root.cursor = Model.clampCursor(request.profile - 1, root.profiles.length)
-    if (request.edit) {
-      root.startEditing()
-      if (root.editing) root.editTab = request.tab
-    }
-  }
-
-  function hoverSlot(slot, hovered) {
-    if (hovered) root.hoveredSlot = slot
-    else if (root.hoveredSlot === slot) root.hoveredSlot = -1
   }
 
   function refresh() {
@@ -115,14 +114,95 @@ Item {
     infoCommand.start(["info", "--json"])
   }
 
-  function moveCursor(delta) {
-    root.cursor = Model.clampCursor(root.cursor + delta, root.profiles.length)
+  function applyOpenRequest() {
+    var request = root.pendingOpen
+    if (request === null || !root.ready) return
+    root.pendingOpen = null
+    if (request.profile !== null) root.selectProfile(request.profile - 1, true)
+    if (request.tab !== null) root.tab = request.tab
+    if (request.button !== null) root.selectedSlot = request.button
   }
 
-  function activate(position) {
-    var slot = root.profiles[position]
+  function loadDraft() {
+    root.original = root.selected ? Model.draftFromSlot(root.selected) : null
+    root.draft = root.original
+    root.applyError = ""
+  }
+
+  // Selects a profile. Unsaved edits ask first, unless `discard` is set.
+  function selectProfile(index, discard) {
+    var next = Model.clampCursor(index, root.profiles.length)
+    if (next === root.cursor && root.draft !== null) return
+    if (root.dirty && !discard) {
+      root.pendingCursor = next
+      root.ask("switch")
+      return
+    }
+    root.cursor = next
+    root.loadDraft()
+  }
+
+  function ask(mode) {
+    root.confirmMode = mode
+    keyCatcher.forceActiveFocus()
+  }
+
+  function confirm() {
+    var mode = root.confirmMode
+    root.confirmMode = ""
+    keyCatcher.forceActiveFocus()
+    if (mode === "apply") {
+      root.write()
+    } else if (mode === "switch") {
+      root.revertAll()
+      root.selectProfile(root.pendingCursor, true)
+    } else if (mode === "close") {
+      root.revertAll()
+      root.close()
+    }
+  }
+
+  function updateDraft(next) {
+    root.draft = next
+    root.applyError = ""
+  }
+
+  function revertAll() {
+    root.draft = root.original
+    root.applyError = ""
+  }
+
+  function choose(action) {
+    if (!root.draft || root.selectedSlot < 0) return
+    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, action))
+  }
+
+  function revertSlot() {
+    if (!root.draft || root.selectedSlot < 0) return
+    var saved = root.original[root.table][root.selectedSlot]
+    root.updateDraft(Model.setBinding(root.draft, root.table, root.selectedSlot, saved))
+  }
+
+  // Apply: a dry run of exactly these changes, shown in the confirmation, then the write.
+  function apply() {
+    if (!root.dirty || root.busy) return
+    var problem = Model.draftProblem(root.draft)
+    if (problem !== "") {
+      root.applyError = problem
+      return
+    }
+    root.applyError = ""
+    previewCommand.start(Model.editArgs(root.draft, root.original, true))
+  }
+
+  function write() {
+    if (!root.dirty || root.busy) return
+    saveCommand.start(Model.editArgs(root.draft, root.original, false).concat(["--json"]))
+  }
+
+  function activate() {
+    var slot = root.selected
     if (!slot || root.busy) return
-    root.cursor = position
     var refusal = Model.activationRefusal(slot)
     if (refusal !== "") {
       root.say(refusal, false)
@@ -130,6 +210,11 @@ Item {
     }
     root.say("", false)
     activateCommand.start(["profiles", "activate", String(slot.position + 1), "--json"])
+  }
+
+  function hoverSlot(slot, hovered) {
+    if (hovered) root.hoveredSlot = slot
+    else if (root.hoveredSlot === slot) root.hoveredSlot = -1
   }
 
   function say(message, isError) {
@@ -148,67 +233,7 @@ Item {
     root.daemon = state
     // The daemon switched profiles while the overlay is open: show the new active one.
     var switched = state !== null && (previous === null || previous.active_profile !== state.active_profile)
-    if (root.opened && root.ready && switched && !root.busy && !root.editing) profilesCommand.start(["profiles", "--json"])
-  }
-
-  function startEditing() {
-    if (!root.selected || !root.selected.enabled || root.busy || root.editing) return
-    root.original = Model.draftFromSlot(root.selected)
-    root.draft = root.original
-    root.editTab = "dpi"
-    root.clearPreview()
-    root.say("", false)
-    root.editing = true
-    if (root.catalog.length === 0 && !catalogCommand.running) catalogCommand.start(["actions", "--json"])
-  }
-
-  function stopEditing() {
-    root.editing = false
-    root.confirmOpen = false
-    root.draft = null
-    root.original = null
-    root.clearPreview()
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
-  }
-
-  function clearPreview() {
-    root.previewText = ""
-    root.previewIsError = false
-    root.previewOk = false
-  }
-
-  // Every change invalidates the preview, so Save always matches what was previewed.
-  function updateDraft(next) {
-    root.draft = next
-    root.clearPreview()
-  }
-
-  function requestPreview() {
-    if (!root.draft || root.busy) return
-    var problem = Model.draftProblem(root.draft)
-    if (problem !== "") {
-      root.previewText = problem
-      root.previewIsError = true
-      return
-    }
-    if (!Model.hasChanges(root.draft, root.original)) {
-      root.previewText = "Nothing has changed yet."
-      root.previewIsError = false
-      return
-    }
-    previewCommand.start(Model.editArgs(root.draft, root.original, true))
-  }
-
-  function requestSave() {
-    if (!root.previewOk || root.busy) return
-    root.confirmOpen = true
-    keyCatcher.forceActiveFocus()
-  }
-
-  function confirmSave() {
-    root.confirmOpen = false
-    if (!root.previewOk || root.busy) return
-    saveCommand.start(Model.editArgs(root.draft, root.original, false).concat(["--json"]))
+    if (root.opened && root.ready && switched && !root.busy) profilesCommand.start(["profiles", "--json"])
   }
 
   OmalogiCommand {
@@ -235,6 +260,11 @@ Item {
       var first = root.onboard === null
       root.onboard = parsed
       if (first) root.cursor = Model.initialCursor(parsed)
+      // Unsaved edits survive a refresh; a write replaces them with what the mouse has.
+      if (first || root.reloadDraft || !root.dirty) {
+        root.reloadDraft = false
+        root.loadDraft()
+      }
       Qt.callLater(root.applyOpenRequest)
     }
   }
@@ -252,7 +282,7 @@ Item {
     }
   }
 
-  // The action list needs no device, so it may run alongside device commands.
+  // Needs no device, so it may run alongside device commands.
   OmalogiCommand {
     id: catalogCommand
     onFinished: function(exitCode, stdout, stderr) {
@@ -262,8 +292,8 @@ Item {
     }
   }
 
-  // The picture command reads sysfs and the cache, never the device, so it runs alongside
-  // device commands. Without a picture the overlay shows the binding table alone.
+  // Reads sysfs and the cache, never the device. Without a picture the buttons are
+  // shown as cards alone.
   OmalogiCommand {
     id: pictureCommand
     onFinished: function(exitCode, stdout, stderr) {
@@ -274,9 +304,12 @@ Item {
   OmalogiCommand {
     id: previewCommand
     onFinished: function(exitCode, stdout, stderr) {
-      root.previewOk = exitCode === 0
-      root.previewIsError = exitCode !== 0
-      root.previewText = exitCode === 0 ? stdout.trim() : Model.errorMessage(stderr, exitCode)
+      if (exitCode !== 0) {
+        root.applyError = Model.errorMessage(stderr, exitCode)
+        return
+      }
+      root.previewText = stdout.trim()
+      root.ask("apply")
     }
   }
 
@@ -285,12 +318,10 @@ Item {
     onFinished: function(exitCode, stdout, stderr) {
       var report = exitCode === 0 ? Model.parseJson(stdout) : null
       if (report !== null) {
-        root.stopEditing()
-        root.say("Profile " + report.profile + " saved and verified. Backup: " + report.backup, false)
+        root.reloadDraft = true
+        root.say("Profile " + report.profile + " saved to the mouse and verified. Backup: " + report.backup, false)
       } else {
-        root.previewOk = false
-        root.previewIsError = true
-        root.previewText = exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode)
+        root.applyError = exitCode === 0 ? root.unreadable : Model.errorMessage(stderr, exitCode)
       }
       profilesCommand.start(["profiles", "--json"])
     }
@@ -321,99 +352,12 @@ Item {
     ScriptAction { script: root.finishClose() }
   }
 
-  component Caption: Text {
+  component Label: Text {
     textFormat: Text.PlainText
     color: Color.menu.text
-    opacity: 0.6
-    elide: Text.ElideRight
-    font.family: Style.font.menuFamily
-    font.pixelSize: Style.font.caption
-  }
-
-  component BindingLabel: Text {
-    property var label: null
-    textFormat: Text.PlainText
-    text: label === null ? "—" : label
-    color: Color.menu.text
-    opacity: label === null ? 0.4 : 1
     elide: Text.ElideRight
     font.family: Style.font.menuFamily
     font.pixelSize: Style.font.body
-  }
-
-  // Bindings by slot, with the G-Shift column when the profile binds any G-Shift button.
-  component BindingTable: Column {
-    id: table
-    property var rows: []
-    property bool showGShift: false
-    readonly property int columns: showGShift ? 2 : 1
-    readonly property int labelWidth: (width - root.slotColumnWidth - Style.spacing.md * columns) / columns
-
-    spacing: Style.spacing.xxs
-
-    Row {
-      spacing: Style.spacing.md
-
-      Item { width: root.slotColumnWidth; height: 1 }
-
-      PanelSectionHeader {
-        width: table.labelWidth
-        text: "Buttons"
-        foreground: Color.menu.text
-      }
-
-      PanelSectionHeader {
-        width: table.labelWidth
-        visible: table.showGShift
-        text: "G-Shift"
-        foreground: Color.menu.text
-      }
-    }
-
-    Repeater {
-      model: table.rows
-
-      delegate: Rectangle {
-        id: row
-        required property var modelData
-        readonly property bool hot: root.hoveredSlot === modelData.slot
-        width: table.width
-        height: rowContent.implicitHeight + Style.spacing.xxs * 2
-        radius: Style.cornerRadius
-        color: hot ? Util.alpha(Color.menu.text, 0.08) : "transparent"
-
-        MouseArea {
-          anchors.fill: parent
-          hoverEnabled: true
-          onContainsMouseChanged: root.hoverSlot(row.modelData.slot, containsMouse)
-        }
-
-        Row {
-          id: rowContent
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.spacing.md
-
-          Caption {
-            width: root.slotColumnWidth
-            text: "slot " + row.modelData.slot
-            color: row.hot ? Color.accent : Color.menu.text
-            opacity: row.hot ? 1 : 0.6
-            font.pixelSize: Style.font.body
-          }
-
-          BindingLabel {
-            width: table.labelWidth
-            label: row.modelData.button
-          }
-
-          BindingLabel {
-            width: table.labelWidth
-            visible: table.showGShift
-            label: row.modelData.gshift
-          }
-        }
-      }
-    }
   }
 
   PanelWindow {
@@ -434,7 +378,7 @@ Item {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: if (!root.editing) root.close()
+      onClicked: root.close()
     }
 
     BorderSurface {
@@ -450,7 +394,7 @@ Item {
 
       transform: Translate { id: rise }
 
-      MouseArea { anchors.fill: parent; onClicked: {} }
+      MouseArea { anchors.fill: parent; onClicked: keyCatcher.forceActiveFocus() }
 
       Item {
         id: keyCatcher
@@ -462,24 +406,25 @@ Item {
             event.accepted = true
             return
           }
-          if (root.editing) {
-            if (event.key === Qt.Key_Escape) {
-              root.stopEditing()
-              event.accepted = true
-            }
-            return
-          }
+          var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
           if (event.key === Qt.Key_Escape) {
-            root.close()
+            if (root.selectedSlot >= 0) root.selectedSlot = -1
+            else root.close()
+          } else if (ctrl && event.key === Qt.Key_S) {
+            root.apply()
           } else if (event.key === Qt.Key_Down || event.text === "j") {
-            root.moveCursor(1)
+            root.selectProfile(root.cursor + 1, false)
           } else if (event.key === Qt.Key_Up || event.text === "k") {
-            root.moveCursor(-1)
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-            root.activate(root.cursor)
-          } else if (event.text === "e") {
-            root.startEditing()
-          } else if (event.text === "r") {
+            root.selectProfile(root.cursor - 1, false)
+          } else if (event.text === "1") {
+            root.tab = "buttons"
+          } else if (event.text === "2") {
+            root.tab = "gshift"
+          } else if (event.text === "3") {
+            root.tab = "sensitivity"
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.activate()
+          } else if (event.text === "r" && !root.dirty) {
             root.refresh()
           } else {
             return
@@ -488,57 +433,132 @@ Item {
         }
       }
 
-      Column {
+      Item {
         anchors.fill: parent
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
         anchors.leftMargin: card.contentLeftInset
-        spacing: Style.spacing.panelGap
 
+        // ---- Header -----------------------------------------------------
         Item {
-          width: parent.width
+          id: header
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
           height: root.headerHeight
 
-          Text {
+          Label {
             id: brand
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
             text: "Omalogi"
-            color: Color.menu.text
-            font.family: Style.font.menuFamily
             font.pixelSize: Style.font.heading
             font.bold: true
           }
 
-          Text {
+          Label {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width - brand.width - Style.spacing.panelGap)
             horizontalAlignment: Text.AlignRight
-            textFormat: Text.PlainText
-            text: root.info ? Model.deviceSummary(root.info) : ""
-            color: Color.menu.text
             opacity: 0.6
-            elide: Text.ElideRight
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.body
+            text: root.info ? Model.deviceSummary(root.info) : ""
           }
         }
 
+        // ---- Footer -----------------------------------------------------
         Item {
-          width: parent.width
-          height: parent.height - root.headerHeight - footer.height - parent.spacing * 2
+          id: footer
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          height: Style.spacing.controlHeight + Style.spacing.sm * 2
 
-          Text {
+          Row {
+            anchors.left: parent.left
+            anchors.right: actions.left
+            anchors.rightMargin: Style.spacing.panelGap
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.spacing.md
+
+            Rectangle {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: root.dirty && root.applyError === ""
+              width: Style.space(8)
+              height: width
+              radius: width / 2
+              color: Color.accent
+            }
+
+            Label {
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - Style.space(20)
+              readonly property string daemonProblem: Model.daemonProblem(root.daemon)
+              text: root.applyError !== ""
+                ? root.applyError
+                : root.dirty
+                  ? root.changes + (root.changes === 1 ? " unsaved change" : " unsaved changes")
+                    + " to profile " + (root.draft ? root.draft.number : "")
+                  : (root.notice !== "" ? root.notice : daemonProblem)
+              color: root.applyError !== "" || (!root.dirty && root.notice !== "" && root.noticeIsError)
+                || (!root.dirty && root.notice === "" && daemonProblem !== "")
+                ? Color.urgent : Color.menu.text
+            }
+          }
+
+          Row {
+            id: actions
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.spacing.md
+
+            Label {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: !root.dirty
+              opacity: 0.55
+              text: "↑↓ profile    1 2 3 view    ⏎ activate    r refresh    esc close"
+              font.pixelSize: Style.font.caption
+            }
+
+            Button {
+              visible: root.dirty
+              text: "Revert"
+              bordered: true
+              enabled: !saveCommand.running
+              foreground: Color.menu.text
+              fontFamily: Style.font.menuFamily
+              onClicked: root.revertAll()
+            }
+
+            Button {
+              visible: root.dirty
+              text: previewCommand.running ? "Checking…" : (saveCommand.running ? "Writing…" : "Apply to mouse")
+              bordered: true
+              active: true
+              enabled: !root.busy
+              foreground: Color.menu.text
+              fontFamily: Style.font.menuFamily
+              onClicked: root.apply()
+            }
+          }
+        }
+
+        // ---- Workspace --------------------------------------------------
+        Item {
+          id: workspace
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: header.bottom
+          anchors.topMargin: Style.spacing.panelGap
+          anchors.bottom: footer.top
+          anchors.bottomMargin: Style.spacing.panelGap
+
+          Label {
             anchors.centerIn: parent
             visible: !root.ready && root.loadError === ""
-            textFormat: Text.PlainText
-            text: "Reading your mouse…"
-            color: Color.menu.text
             opacity: 0.6
-            font.family: Style.font.menuFamily
+            text: "Reading your mouse…"
             font.pixelSize: Style.font.title
           }
 
@@ -548,14 +568,11 @@ Item {
             visible: root.loadError !== ""
             spacing: Style.spacing.lg
 
-            Text {
+            Label {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.Wrap
-              textFormat: Text.PlainText
               text: root.loadError
-              color: Color.menu.text
-              font.family: Style.font.menuFamily
               font.pixelSize: Style.font.title
             }
 
@@ -572,14 +589,12 @@ Item {
             anchors.fill: parent
             visible: root.ready && root.loadError === ""
 
+            // Profiles.
             Column {
-              id: profileList
-              width: root.listWidth
+              id: rail
+              width: root.railWidth
               anchors.top: parent.top
-              anchors.bottom: parent.bottom
               spacing: Style.spacing.xs
-              enabled: !root.editing
-              opacity: root.editing ? 0.5 : 1
 
               PanelSectionHeader {
                 text: "Profiles"
@@ -592,23 +607,33 @@ Item {
                 delegate: Button {
                   required property var modelData
                   required property int index
-                  width: profileList.width
+                  width: rail.width
                   leftAlign: true
                   iconText: modelData.active ? "󰄬" : ""
-                  text: Model.profileTitle(modelData)
+                  text: Model.profileTitle(modelData) + (!modelData.enabled ? "  (off)" : "")
                   selected: index === root.cursor
                   active: modelData.active
-                  opacity: modelData.enabled ? 1 : 0.5
+                  opacity: modelData.enabled ? 1 : 0.6
                   foreground: Color.menu.text
                   fontFamily: Style.font.menuFamily
-                  onClicked: root.cursor = index
+                  onClicked: root.selectProfile(index, false)
                 }
+              }
+
+              Label {
+                width: rail.width
+                visible: root.anyDisabled
+                topPadding: Style.spacing.md
+                wrapMode: Text.Wrap
+                opacity: 0.5
+                text: "Profiles marked off are turned off on the mouse. You can still edit them."
+                font.pixelSize: Style.font.caption
               }
             }
 
             Rectangle {
-              id: divider
-              anchors.left: profileList.right
+              id: railDivider
+              anchors.left: rail.right
               anchors.leftMargin: Style.spacing.lg
               anchors.top: parent.top
               anchors.bottom: parent.bottom
@@ -616,472 +641,141 @@ Item {
               color: Util.alpha(Color.menu.border, 0.28)
             }
 
-            // ---- Profile details -----------------------------------------
-            Column {
-              anchors.left: divider.right
+            Item {
+              id: stageArea
+              anchors.left: railDivider.right
               anchors.leftMargin: Style.spacing.lg
               anchors.right: parent.right
               anchors.top: parent.top
-              spacing: Style.spacing.xxl
-              visible: root.selected !== null && !root.editing
+              anchors.bottom: parent.bottom
 
+              // Profile title, views and activation.
               Item {
-                width: parent.width
-                height: Math.max(titleColumn.height, detailActions.height)
+                id: toolbar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: Math.max(titleColumn.height, toolbarActions.height)
 
                 Column {
                   id: titleColumn
                   anchors.left: parent.left
-                  anchors.right: detailActions.left
+                  anchors.right: toolbarActions.left
                   anchors.rightMargin: Style.spacing.lg
                   anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.spacing.xxs
 
-                  Text {
+                  Label {
                     width: parent.width
-                    textFormat: Text.PlainText
                     text: root.selected ? Model.profileTitle(root.selected) : ""
-                    color: Color.menu.text
-                    elide: Text.ElideRight
-                    font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.heading
                     font.bold: true
                   }
 
-                  Caption {
+                  Label {
                     width: parent.width
-                    text: root.selected ? Model.profileStatus(root.selected) : ""
-                    font.pixelSize: Style.font.body
-                  }
-
-                  Caption {
-                    width: parent.width
-                    visible: text !== ""
-                    text: root.selected ? Model.daemonNote(root.daemon, root.selected) : ""
-                    font.pixelSize: Style.font.body
+                    opacity: 0.6
+                    text: {
+                      if (!root.selected) return ""
+                      var note = Model.daemonNote(root.daemon, root.selected)
+                      return Model.profileStatus(root.selected) + (note !== "" ? "  ·  " + note : "")
+                    }
                   }
                 }
 
                 Row {
-                  id: detailActions
+                  id: toolbarActions
                   anchors.right: parent.right
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.spacing.md
+                  spacing: Style.spacing.lg
 
-                  Button {
-                    text: "Edit"
-                    bordered: true
-                    enabled: root.selected !== null && root.selected.enabled && !root.busy
-                    opacity: enabled ? 1 : 0.4
+                  ButtonGroup {
+                    anchors.verticalCenter: parent.verticalCenter
+                    options: [
+                      { value: "buttons", label: "Buttons" },
+                      { value: "gshift", label: "G-Shift" },
+                      { value: "sensitivity", label: "Sensitivity" }
+                    ]
+                    value: root.tab
                     foreground: Color.menu.text
                     fontFamily: Style.font.menuFamily
-                    onClicked: root.startEditing()
+                    onChanged: function(value) { root.tab = value }
                   }
 
                   Button {
+                    anchors.verticalCenter: parent.verticalCenter
                     text: activateCommand.running ? "Activating…" : "Activate"
                     bordered: true
                     enabled: root.selected !== null && root.selected.enabled && !root.selected.active && !root.busy
                     opacity: enabled ? 1 : 0.4
                     foreground: Color.menu.text
                     fontFamily: Style.font.menuFamily
-                    onClicked: root.activate(root.cursor)
+                    onClicked: root.activate()
                   }
-                }
-              }
-
-              Column {
-                width: parent.width
-                spacing: Style.spacing.sm
-
-                PanelSectionHeader {
-                  text: "DPI stages"
-                  foreground: Color.menu.text
-                }
-
-                Row {
-                  spacing: Style.spacing.sm
-
-                  Repeater {
-                    model: root.selected ? Model.dpiStages(root.selected.profile) : []
-
-                    delegate: BorderSurface {
-                      required property var modelData
-                      width: chipLabel.implicitWidth + Style.spacing.controlPaddingX * 2
-                      height: Style.spacing.controlHeight
-                      radius: Style.cornerRadius
-                      color: modelData.isDefault ? Style.selectedAccentFill : "transparent"
-                      borderSpec: Border.controlSpec(modelData.isDefault ? "focus" : "normal", Color.menu.text, Color.accent)
-
-                      Text {
-                        id: chipLabel
-                        anchors.centerIn: parent
-                        textFormat: Text.PlainText
-                        text: modelData.isShift ? modelData.dpi + "  shift" : String(modelData.dpi)
-                        color: Color.menu.text
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.body
-                        font.bold: modelData.isDefault
-                      }
-                    }
-                  }
-                }
-              }
-
-              Row {
-                id: buttonsArea
-                readonly property var views: Model.pictureViews(root.picture)
-                width: parent.width
-                spacing: Style.spacing.huge
-
-                Row {
-                  id: pictures
-                  visible: buttonsArea.views.length > 0
-                  spacing: Style.spacing.lg
-
-                  Repeater {
-                    model: buttonsArea.views
-
-                    delegate: Item {
-                      id: view
-                      required property var modelData
-                      width: Model.viewWidth(modelData, root.pictureHeight)
-                      height: root.pictureHeight
-
-                      Image {
-                        anchors.fill: parent
-                        source: "file://" + view.modelData.image
-                        sourceSize.height: root.pictureHeight * 2
-                        fillMode: Image.PreserveAspectFit
-                        asynchronous: true
-                        smooth: true
-                        mipmap: true
-                      }
-
-                      Repeater {
-                        model: view.modelData.hotspots
-
-                        delegate: Rectangle {
-                          id: badge
-                          required property var modelData
-                          readonly property bool hot: root.hoveredSlot === modelData.slot
-                          width: Style.space(20)
-                          height: width
-                          radius: width / 2
-                          x: modelData.x * view.width - width / 2
-                          y: modelData.y * view.height - height / 2
-                          color: hot ? Color.accent : Util.alpha(Color.menu.background, 0.85)
-                          border.width: Math.max(1, Style.normalBorderWidth)
-                          border.color: hot ? Color.accent : Util.alpha(Color.menu.text, 0.7)
-
-                          Text {
-                            anchors.centerIn: parent
-                            textFormat: Text.PlainText
-                            text: String(badge.modelData.slot)
-                            color: badge.hot ? Color.menu.background : Color.menu.text
-                            font.family: Style.font.menuFamily
-                            font.pixelSize: Style.font.caption
-                            font.bold: true
-                          }
-
-                          MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onContainsMouseChanged: root.hoverSlot(badge.modelData.slot, containsMouse)
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-
-                BindingTable {
-                  width: parent.width - (pictures.visible ? pictures.width + parent.spacing : 0)
-                  rows: root.selected ? Model.bindingRows(root.selected.labels) : []
-                  showGShift: root.selected !== null && Model.boundSlots(root.selected.labels.gshift_buttons).length > 0
-                }
-              }
-            }
-
-            // ---- Profile editor ------------------------------------------
-            Item {
-              id: editor
-              anchors.left: divider.right
-              anchors.leftMargin: Style.spacing.lg
-              anchors.right: parent.right
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              visible: root.editing && root.draft !== null
-
-              Row {
-                id: editorHeader
-                anchors.left: parent.left
-                anchors.top: parent.top
-                spacing: Style.spacing.xxl
-
-                Text {
-                  anchors.verticalCenter: parent.verticalCenter
-                  textFormat: Text.PlainText
-                  text: root.draft ? "Edit profile " + root.draft.number : ""
-                  color: Color.menu.text
-                  font.family: Style.font.menuFamily
-                  font.pixelSize: Style.font.heading
-                  font.bold: true
-                }
-
-                ButtonGroup {
-                  anchors.verticalCenter: parent.verticalCenter
-                  options: [
-                    { value: "dpi", label: "DPI & rate" },
-                    { value: "buttons", label: "Buttons" },
-                    { value: "gshift", label: "G-Shift" }
-                  ]
-                  value: root.editTab
-                  foreground: Color.menu.text
-                  fontFamily: Style.font.menuFamily
-                  onChanged: function(value) { root.editTab = value }
                 }
               }
 
               Item {
-                id: editorBody
+                id: content
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.top: editorHeader.bottom
+                anchors.top: toolbar.bottom
                 anchors.topMargin: Style.spacing.xxl
-                anchors.bottom: previewBox.visible ? previewBox.top : editorActions.top
-                anchors.bottomMargin: Style.spacing.lg
-
-                // DPI stages, default and shift stages, report rate.
-                Column {
-                  anchors.fill: parent
-                  visible: root.editTab === "dpi"
-                  spacing: Style.spacing.xxl
-
-                  Column {
-                    width: parent.width
-                    spacing: Style.spacing.sm
-
-                    PanelSectionHeader {
-                      text: "DPI stages (" + root.dpiBounds.min + "–" + root.dpiBounds.max + ", step " + root.dpiBounds.step + ")"
-                      foreground: Color.menu.text
-                    }
-
-                    Flow {
-                      width: parent.width
-                      spacing: Style.spacing.md
-
-                      Repeater {
-                        model: root.draft ? root.draft.dpiStages : []
-
-                        delegate: Row {
-                          required property var modelData
-                          required property int index
-                          spacing: Style.spacing.xxs
-
-                          NumberField {
-                            anchors.verticalCenter: parent.verticalCenter
-                            from: root.dpiBounds.min
-                            to: root.dpiBounds.max
-                            stepSize: root.dpiBounds.step
-                            value: modelData
-                            foreground: Color.menu.text
-                            fontFamily: Style.font.menuFamily
-                            onModified: function(value) { root.updateDraft(Model.setStage(root.draft, index, value)) }
-                          }
-
-                          PanelActionButton {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: root.draft !== null && root.draft.dpiStages.length > 1
-                            iconText: "󰅖"
-                            tooltipText: "Remove stage"
-                            foreground: Color.menu.text
-                            onClicked: root.updateDraft(Model.removeStage(root.draft, index))
-                          }
-                        }
-                      }
-
-                      Button {
-                        visible: root.draft !== null && root.draft.dpiStages.length < 5
-                        text: "Add stage"
-                        bordered: true
-                        foreground: Color.menu.text
-                        fontFamily: Style.font.menuFamily
-                        onClicked: root.updateDraft(Model.addStage(root.draft, Model.nextStageDpi(root.draft, root.dpiBounds)))
-                      }
-                    }
-                  }
-
-                  Row {
-                    spacing: Style.spacing.huge
-
-                    Dropdown {
-                      width: Style.spacing.dropdownWidth
-                      label: "Default stage"
-                      fontFamily: Style.font.menuFamily
-                      options: root.draft ? Model.stageOptions(root.draft) : []
-                      value: root.draft && root.draft.defaultDpi !== null ? String(root.draft.defaultDpi) : ""
-                      onChanged: function(value) { root.updateDraft(Model.setField(root.draft, "defaultDpi", Number(value))) }
-                    }
-
-                    Dropdown {
-                      width: Style.spacing.dropdownWidth
-                      label: "DPI shift stage"
-                      fontFamily: Style.font.menuFamily
-                      options: root.draft ? Model.stageOptions(root.draft) : []
-                      value: root.draft && root.draft.shiftDpi !== null ? String(root.draft.shiftDpi) : ""
-                      onChanged: function(value) { root.updateDraft(Model.setField(root.draft, "shiftDpi", Number(value))) }
-                    }
-                  }
-
-                  Dropdown {
-                    width: Style.spacing.dropdownWidth
-                    label: "Report rate"
-                    fontFamily: Style.font.menuFamily
-                    options: Model.rateOptions(root.info)
-                    value: root.draft && root.draft.rateHz !== null ? String(root.draft.rateHz) : ""
-                    onChanged: function(value) { root.updateDraft(Model.setField(root.draft, "rateHz", Number(value))) }
-                  }
-                }
-
-                // Button and G-Shift bindings.
-                ListView {
-                  anchors.fill: parent
-                  visible: root.editTab !== "dpi"
-                  clip: true
-                  spacing: Style.spacing.sm
-                  boundsBehavior: Flickable.StopAtBounds
-                  model: root.original ? Model.editableSlots(root.original, root.editTable, root.buttonCount) : []
-
-                  delegate: Row {
-                    required property var modelData
-                    readonly property int slot: modelData
-                    readonly property string table: root.editTable
-                    readonly property var current: root.draft ? root.draft[table][slot] : null
-                    spacing: Style.spacing.md
-
-                    Caption {
-                      anchors.verticalCenter: parent.verticalCenter
-                      width: root.slotColumnWidth
-                      text: "slot " + slot
-                      font.pixelSize: Style.font.body
-                    }
-
-                    SearchableDropdown {
-                      anchors.verticalCenter: parent.verticalCenter
-                      width: Style.spacing.searchableDropdownWidth
-                      showLabel: false
-                      fontFamily: Style.font.menuFamily
-                      placeholderText: "Search actions..."
-                      options: Model.actionOptions(root.catalog, current)
-                      value: Model.actionChoice(current)
-                      onChanged: function(value) {
-                        var action = value === "key:" ? (Model.isKeyAction(current) ? current : "key:") : value
-                        root.updateDraft(Model.setBinding(root.draft, table, slot, action))
-                      }
-                    }
-
-                    TextField {
-                      anchors.verticalCenter: parent.verticalCenter
-                      width: Style.space(170)
-                      visible: Model.isKeyAction(current)
-                      text: Model.keyCombo(current)
-                      placeholderText: "ctrl+shift+t"
-                      foreground: Color.menu.text
-                      onEditingFinished: root.updateDraft(Model.setBinding(root.draft, table, slot, "key:" + text.trim().toLowerCase()))
-                    }
-                  }
-                }
-              }
-
-              BorderSurface {
-                id: previewBox
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: editorActions.top
-                anchors.bottomMargin: Style.spacing.lg
-                visible: root.previewText !== ""
-                height: Math.min(previewLabel.implicitHeight + Style.spacing.controlPaddingY * 2, Style.space(150))
-                radius: Style.cornerRadius
-                color: Util.alpha(Color.menu.text, 0.04)
-                borderSpec: Border.controlSpec("normal", Color.menu.text, Color.accent)
-
-                Text {
-                  id: previewLabel
-                  anchors.fill: parent
-                  anchors.margins: Style.spacing.controlPaddingY
-                  textFormat: Text.PlainText
-                  text: root.previewText
-                  color: root.previewIsError ? Color.urgent : Color.menu.text
-                  wrapMode: Text.Wrap
-                  elide: Text.ElideRight
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.body
-                }
-              }
-
-              Row {
-                id: editorActions
-                anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                spacing: Style.spacing.md
 
-                Button {
-                  text: previewCommand.running ? "Checking…" : "Preview"
-                  bordered: true
-                  enabled: !root.busy
-                  foreground: Color.menu.text
-                  fontFamily: Style.font.menuFamily
-                  onClicked: root.requestPreview()
+                DeviceCanvas {
+                  anchors.left: parent.left
+                  anchors.right: inspectorDivider.left
+                  anchors.rightMargin: Style.spacing.lg
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  visible: root.tab !== "sensitivity"
+                  views: root.views
+                  entries: root.entries
+                  selectedSlot: root.selectedSlot
+                  hoveredSlot: root.hoveredSlot
+                  onSlotSelected: function(slot) {
+                    root.selectedSlot = slot
+                    keyCatcher.forceActiveFocus()
+                  }
+                  onSlotHovered: function(slot, hovered) { root.hoverSlot(slot, hovered) }
                 }
 
-                Button {
-                  text: saveCommand.running ? "Writing…" : "Save to mouse"
-                  bordered: true
-                  enabled: root.previewOk && !root.busy
-                  opacity: enabled ? 1 : 0.4
-                  foreground: Color.menu.text
-                  fontFamily: Style.font.menuFamily
-                  onClicked: root.requestSave()
+                Rectangle {
+                  id: inspectorDivider
+                  anchors.right: inspector.left
+                  anchors.rightMargin: Style.spacing.lg
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  width: Style.normalBorderWidth
+                  visible: root.tab !== "sensitivity"
+                  color: Util.alpha(Color.menu.border, 0.28)
                 }
 
-                Button {
-                  text: "Cancel"
-                  bordered: true
-                  enabled: !saveCommand.running
-                  foreground: Color.menu.text
-                  fontFamily: Style.font.menuFamily
-                  onClicked: root.stopEditing()
+                ActionInspector {
+                  id: inspector
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  width: root.inspectorWidth
+                  visible: root.tab !== "sensitivity"
+                  entry: root.selectedEntry
+                  catalog: root.catalog
+                  onChosen: function(action) { root.choose(action) }
+                  onReverted: root.revertSlot()
+                  onRecordingChanged: if (!recording) keyCatcher.forceActiveFocus()
+                }
+
+                SensitivityPanel {
+                  anchors.fill: parent
+                  visible: root.tab === "sensitivity"
+                  draft: root.draft
+                  bounds: Model.dpiBounds(root.info)
+                  rates: root.info && root.info.report_rates_hz ? root.info.report_rates_hz : []
+                  onEdited: function(next) { root.updateDraft(next) }
                 }
               }
             }
-          }
-        }
-
-        Item {
-          id: footer
-          width: parent.width
-          height: Style.font.body + Style.spacing.sm * 2
-
-          Text {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - hints.width - Style.spacing.panelGap
-            textFormat: Text.PlainText
-            text: root.footerText
-            color: root.footerIsError ? Color.urgent : Color.menu.text
-            elide: Text.ElideRight
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.body
-          }
-
-          Caption {
-            id: hints
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.editing
-              ? "Preview, then save    esc cancel"
-              : "↑↓ select    ⏎ activate    e edit    r refresh    esc close"
           }
         }
       }
@@ -1090,17 +784,27 @@ Item {
         id: confirmDialog
         anchors.fill: parent
         z: 10
-        opened: root.confirmOpen
-        message: root.draft
-          ? "Write profile " + root.draft.number + " to the mouse? A backup of all profiles is saved first, and the write is read back to verify it."
-          : ""
-        confirmText: "Write"
+        opened: root.confirmMode !== ""
+        background: Color.menu.background
+        foreground: Color.menu.text
         fontFamily: Style.font.menuFamily
+        message: {
+          var number = root.draft ? root.draft.number : ""
+          if (root.confirmMode === "apply") {
+            return "Write " + root.changes + (root.changes === 1 ? " change" : " changes") + " to profile " + number + "?\n\n"
+              + root.previewText
+              + "\n\nAll profiles are backed up first, and the write is read back to verify it."
+          }
+          if (root.confirmMode === "switch") return "Discard the unsaved changes to profile " + number + "?"
+          return "Close and discard the unsaved changes to profile " + number + "?"
+        }
+        confirmText: root.confirmMode === "apply" ? "Write to mouse" : "Discard"
+        cancelText: root.confirmMode === "apply" ? "Cancel" : "Keep editing"
         onCanceled: {
-          root.confirmOpen = false
+          root.confirmMode = ""
           keyCatcher.forceActiveFocus()
         }
-        onConfirmed: root.confirmSave()
+        onConfirmed: root.confirm()
       }
     }
   }

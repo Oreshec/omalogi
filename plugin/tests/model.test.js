@@ -86,16 +86,6 @@ test("activationRefusal explains why a profile cannot be activated", () => {
   assert.equal(Model.activationRefusal(slot({ active: true })), "Profile 2 is already active.")
 })
 
-test("dpiStages skips unused stages and marks default and shift", () => {
-  const stages = JSON.parse(JSON.stringify(Model.dpiStages(slot({}).profile)))
-  assert.deepEqual(stages, [
-    { dpi: 800, isDefault: false, isShift: true },
-    { dpi: 1200, isDefault: false, isShift: false },
-    { dpi: 1600, isDefault: true, isShift: false },
-    { dpi: 3200, isDefault: false, isShift: false }
-  ])
-})
-
 test("daemonNote explains automatic switches only for the active profile", () => {
   const daemon = { connected: true, active_profile: 2, source: "rule 1", app: "cs2", error: null }
   assert.equal(Model.daemonNote(daemon, slot({ active: true })), "Set automatically by rule 1 for cs2")
@@ -177,7 +167,7 @@ test("draftFromSlot uses the terms profiles edit accepts", () => {
 
 test("an untouched draft has no changes", () => {
   const original = Model.draftFromSlot(editableSlot())
-  assert.equal(Model.hasChanges(original, original), false)
+  assert.equal(Model.changeCount(original, original), 0)
   assert.equal(Model.draftProblem(original), "")
 })
 
@@ -221,16 +211,84 @@ test("stages are capped at five and must not be empty", () => {
   assert.equal(Model.draftProblem(draft), "Add at least one DPI stage.")
 })
 
-test("openRequest reads profile, edit and tab from the payload", () => {
+test("openRequest reads profile, tab and button from the payload", () => {
   assert.equal(Model.openRequest(null), null)
   assert.equal(Model.openRequest({}), null)
   assert.equal(Model.openRequest({ profile: 0 }), null)
-  assert.deepEqual(plain(Model.openRequest({ profile: 3, edit: true, tab: "buttons" })), {
+  assert.deepEqual(plain(Model.openRequest({ profile: 3, tab: "gshift", button: 4 })), {
     profile: 3,
-    edit: true,
-    tab: "buttons"
+    tab: "gshift",
+    button: 4
   })
-  assert.deepEqual(plain(Model.openRequest({ edit: true, tab: "nope" })), { profile: null, edit: true, tab: "dpi" })
+  assert.deepEqual(plain(Model.openRequest({ tab: "nope", button: 2 })), { profile: null, tab: null, button: 2 })
+})
+
+test("canvas helpers index entries and find the ones without a position", () => {
+  const entries = [{ slot: 0 }, { slot: 11 }, { slot: 3 }]
+  const views = [{ hotspots: [{ slot: 0 }] }, { hotspots: [{ slot: 3 }] }]
+  assert.deepEqual(Object.keys(Model.indexBySlot(entries)).sort(), ["0", "11", "3"])
+  assert.deepEqual(plain(Model.entriesWithoutHotspot(entries, views)), [{ slot: 11 }])
+  assert.deepEqual(plain(Model.entriesWithoutHotspot(entries, [])), entries)
+})
+
+test("fitPictureHeight fits the width within bounds", () => {
+  const views = [{ width: 1000, height: 2000 }, { width: 500, height: 2000 }]
+  // Aspect ratios add up to 0.75, so 300 px of width holds a 400 px tall picture.
+  assert.equal(Model.fitPictureHeight(views, 320, 20, 100, 1000), 400)
+  assert.equal(Model.fitPictureHeight(views, 320, 20, 100, 300), 300)
+  assert.equal(Model.fitPictureHeight(views, 50, 20, 100, 300), 100)
+  assert.equal(Model.fitPictureHeight([], 50, 20, 100, 300), 300)
+})
+
+test("actionRows puts a header before each section", () => {
+  const rows = plain(
+    Model.actionRows([
+      { group: "Mouse", actions: [{ value: "back", label: "back", group: "Mouse" }] },
+      { group: "Media", actions: [{ value: "media:mute", label: "mute", group: "Media" }] }
+    ])
+  )
+  assert.deepEqual(rows.map((row) => row.kind + ":" + (row.value || row.group)), [
+    "header:Mouse",
+    "action:back",
+    "header:Media",
+    "action:media:mute"
+  ])
+})
+
+test("modifiersLabel and buttonName", () => {
+  assert.equal(Model.modifiersLabel(QT.CTRL | QT.META), "Ctrl+Super")
+  assert.equal(Model.modifiersLabel(0), "")
+  assert.equal(Model.buttonName(3, true), "G4")
+  assert.equal(Model.buttonName(3, false), "Slot 3")
+})
+
+test("slotEntries label changed bindings from the catalog and shortcuts", () => {
+  const slot = {
+    ...editableSlot(),
+    labels: {
+      buttons: ["left click", "right click", "middle click", "back", "DPI shift (hold)", "forward", "scroll left"],
+      gshift_buttons: []
+    }
+  }
+  const original = Model.draftFromSlot(slot)
+  let draft = Model.setBinding(original, "buttons", 3, "key:ctrl+pageup")
+  draft = Model.setBinding(draft, "buttons", 5, "media:mute")
+  const catalog = [{ value: "media:mute", label: "mute", group: "Media" }]
+  const entries = plain(Model.slotEntries(slot, draft, original, catalog, "buttons", 6, true))
+  assert.deepEqual(entries.find((entry) => entry.slot === 3), {
+    slot: 3,
+    name: "G4",
+    label: "Ctrl+Page Up",
+    changed: true,
+    action: "key:ctrl+pageup"
+  })
+  assert.equal(entries.find((entry) => entry.slot === 5).label, "mute")
+  // Slot 6 is past the 6 physical buttons: a bound extra, named by slot.
+  assert.equal(entries.find((entry) => entry.slot === 6).name, "Slot 6")
+  const left = entries.find((entry) => entry.slot === 0)
+  assert.equal(left.changed, false)
+  assert.equal(left.label, "left click")
+  assert.deepEqual(plain(Model.slotEntries(null, draft, original, catalog, "buttons", 6, true)), [])
 })
 
 test("an unfinished keyboard shortcut blocks writing", () => {
@@ -248,15 +306,6 @@ test("dpi bounds and new stages come from the sensor list", () => {
   assert.equal(Model.nextStageDpi(Model.setStage(draft, 4, 20000), bounds), 25600)
 })
 
-test("dropdown options for stages and rates", () => {
-  const draft = Model.draftFromSlot(editableSlot())
-  assert.deepEqual(plain(Model.stageOptions(draft))[0], { value: "800", label: "800 DPI" })
-  assert.deepEqual(plain(Model.rateOptions({ report_rates_hz: [125, 1000] })), [
-    { value: "125", label: "125 Hz" },
-    { value: "1000", label: "1000 Hz" }
-  ])
-})
-
 test("editable slots are physical buttons plus bound extras", () => {
   const original = Model.draftFromSlot(editableSlot())
   // button_count 6: slots 0-5, plus slot 6 which is bound to scroll-left.
@@ -264,25 +313,12 @@ test("editable slots are physical buttons plus bound extras", () => {
   assert.deepEqual(plain(Model.editableSlots(original, "gshift", 2)), [0, 1, 2])
 })
 
-test("action picker groups key combos and keeps unknown current bindings", () => {
-  const catalog = [
-    { value: "back", label: "back", group: "Mouse" },
-    { value: "key:", label: "Keyboard shortcut…", group: "Keyboard" }
-  ]
+test("every keyboard shortcut is the picker's one shortcut entry", () => {
   assert.equal(Model.actionChoice("key:ctrl+t"), "key:")
+  assert.equal(Model.actionChoice("back"), "back")
+  assert.equal(Model.actionChoice(null), "")
   assert.equal(Model.keyCombo("key:ctrl+t"), "ctrl+t")
   assert.equal(Model.keyCombo("back"), "")
-  assert.equal(plain(Model.actionOptions(catalog, "key:ctrl+t")).length, 2)
-  assert.deepEqual(plain(Model.actionOptions(catalog, "button:7"))[0], {
-    value: "button:7",
-    label: "button:7",
-    description: "Current"
-  })
-  assert.deepEqual(plain(Model.actionOptions(catalog, "back"))[0], {
-    value: "back",
-    label: "back",
-    description: "Mouse"
-  })
 })
 
 const QT = { SHIFT: 0x02000000, CTRL: 0x04000000, ALT: 0x08000000, META: 0x10000000 }
@@ -392,24 +428,4 @@ test("pictureViews keeps only usable views", () => {
     ["front"]
   )
   assert.equal(Model.viewWidth(picture.views[0], 280), 156)
-})
-
-test("bindingRows pairs button and G-Shift labels by slot", () => {
-  assert.deepEqual(plain(Model.bindingRows(null)), [])
-  assert.deepEqual(
-    plain(Model.bindingRows({ buttons: ["left click", null, "back", null], gshift_buttons: [null, "mute"] })),
-    [
-      { slot: 0, button: "left click", gshift: null },
-      { slot: 1, button: null, gshift: "mute" },
-      { slot: 2, button: "back", gshift: null }
-    ]
-  )
-})
-
-test("boundSlots keeps slot numbers of bound buttons", () => {
-  const slots = JSON.parse(JSON.stringify(Model.boundSlots(["left click", null, "DPI up"])))
-  assert.deepEqual(slots, [
-    { slot: 0, label: "left click" },
-    { slot: 2, label: "DPI up" }
-  ])
 })
