@@ -1,0 +1,15 @@
+# Omalogi: give the user logged in at the seat access to supported Logitech mice.
+#
+# Only the HID++ interface of devices Omalogi has been tested on is matched; the mouse's
+# pointer interface and every other device keep their defaults. `uaccess` lets
+# systemd-logind grant access to the active session's user, so no group or root is needed.
+#
+# ATTRS keys must all match one parent device, so the USB interface is matched through
+# ID_USB_INTERFACE_NUM, a property of the hidraw node set by 60-persistent-hidraw.rules.
+#
+# Install:  sudo install -Dm644 70-omalogi.rules /usr/lib/udev/rules.d/70-omalogi.rules
+#           sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw
+# Remove:   sudo rm /usr/lib/udev/rules.d/70-omalogi.rules && sudo udevadm control --reload-rules
+
+# Logitech G502 X, wired (046d:c099): HID++ on USB interface 1
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c099", ENV{ID_USB_INTERFACE_NUM}=="01", TAG+="uaccess"
