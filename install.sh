@@ -63,7 +63,20 @@ case ":$PATH:" in
 esac
 
 if [ -d "$HOME/.config/omarchy" ] || command -v omarchy-shell >/dev/null 2>&1; then
-  "$BIN_DIR/omalogi" setup
+  # `omalogi setup` changes your bar and user services, so show exactly what and ask first.
+  say "omalogi setup would make these changes:"
+  "$BIN_DIR/omalogi" setup --dry-run
+  answer=n
+  if { exec 3</dev/tty; } 2>/dev/null; then
+    printf '\033[1m==>\033[0m Apply them? [Y/n] ' >/dev/tty
+    read -r answer <&3 || answer=n
+    exec 3<&-
+    answer=${answer:-y}
+  fi
+  case "$answer" in
+    [Yy]*) "$BIN_DIR/omalogi" setup ;;
+    *) say "Skipped. Run \`omalogi setup\` when you want the bar indicator and automatic switching" ;;
+  esac
 else
   say "Omarchy was not found, so the shell plugin was skipped; run \`omalogi setup\` once it is installed"
 fi

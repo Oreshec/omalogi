@@ -44,8 +44,9 @@ function helperInstallArgv(installScript) {
 function localPath(url) {
   return decodeURIComponent(String(url).replace(/^file:\/\//, ""))
 }
+
 // The oldest `omalogi serve` request format this plugin works with.
-var REQUIRED_PROTOCOL = 1
+var REQUIRED_PROTOCOL = 2
 
 // What stops Omalogi reaching the mouse, from a failed load's message: "helper" (not
 // installed), "access" (no permission), "device" (no mouse), or "error".
@@ -54,6 +55,8 @@ function setupState(message) {
   if (text === "") return ""
   if (text.indexOf("not installed or not on PATH") !== -1) return "helper"
   if (text.indexOf("permission denied opening") !== -1) return "access"
+  // Helpers from 0.2 say "mouse"; older ones said "device".
+  if (text.indexOf("no supported Logitech mouse found") !== -1) return "device"
   if (text.indexOf("no supported Logitech device found") !== -1) return "device"
   return "error"
 }
@@ -117,13 +120,13 @@ function setupCopy(kind, message) {
   case "helper":
     return {
       title: "Install Omalogi's helper",
-      body: "To talk to your mouse, the plugin needs its helper: the omalogi command and a udev rule that lets your user reach the mouse. The installer checks its download and asks for your password once.",
+      body: "To talk to your mouse, the plugin needs its helper: the omalogi command and a udev rule that lets your user reach the mouse. The installer checks its download, asks for your password once, and asks before adding the bar indicator and automatic profile switching.",
       action: "Install helper"
     }
   case "access":
     return {
       title: "Allow access to your mouse",
-      body: "The helper is installed but cannot open the mouse. The installer adds Omalogi's udev rule, which gives your login session access to the mouse's HID++ interface and nothing else.",
+      body: "The helper is installed but cannot open the mouse. The installer adds Omalogi's udev rule, which gives your login session access to supported Logitech mice and their receivers, and nothing else.",
       action: "Allow access"
     }
   case "outdated":
@@ -135,7 +138,7 @@ function setupCopy(kind, message) {
   case "device":
     return {
       title: "Plug in your mouse",
-      body: "Omalogi supports the Logitech G502 X over USB. Connect it, then try again.",
+      body: "Connect a Logitech G-series mouse over USB, or turn on a wireless one paired to its receiver, then try again.",
       action: ""
     }
   default:

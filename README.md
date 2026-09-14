@@ -117,6 +117,21 @@ It downloads the release binary from this repository, checks its SHA-256, instal
 again to update. On Arch you can instead install the
 [`omalogi`](packaging/aur/omalogi) AUR package and run `omalogi setup`.
 
+## Dependencies
+
+- **Omarchy 4** (omarchy-shell, Hyprland): the plugin, bar indicator and automatic
+  switching run inside it.
+- **The `omalogi` helper**: the release binary from this repository (installed by
+  `install.sh` or the AUR package), or built from source with Rust 1.98 or newer. The
+  plugin cannot open USB devices itself.
+- **A udev rule** (`packaging/udev/70-omalogi.rules`) that gives your login session access
+  to supported Logitech mice and receivers; installing it asks for `sudo` once.
+- **Optional**: `systemd --user` for the automatic switching daemon, and an internet
+  connection the first time a mouse picture is downloaded from `assets.openlogi.org`
+  (the overlay works without pictures).
+- **Libraries and data**: OpenLogi's device crates (MIT OR Apache-2.0) for receivers and
+  HID++, and libratbag's device database (MIT) for model ids; see [Credits](#credits).
+
 ## Install from source
 
 Requirements: Omarchy 4 (Hyprland, omarchy-shell), a Rust toolchain (1.98 or newer).

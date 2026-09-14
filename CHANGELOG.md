@@ -5,6 +5,8 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.2.0] - 2026-09-14
+
 ### Added
 
 - Install Omalogi as a native Omarchy plugin with

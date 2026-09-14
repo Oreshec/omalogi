@@ -602,8 +602,13 @@ test("the setup screen names the one step that reaches the mouse", () => {
     "access"
   )
   assert.equal(
-    Model.setupState("no supported Logitech device found; is the G502 X (046d:c099) plugged in over USB?"),
+    Model.setupState("no supported Logitech mouse found; plug a G-series mouse in over USB, or turn on a wireless one paired to its receiver"),
     "device"
+  )
+  assert.equal(
+    Model.setupState("no supported Logitech device found; is the G502 X (046d:c099) plugged in over USB?"),
+    "device",
+    "helpers before 0.2 said device"
   )
   assert.equal(Model.setupState("device request failed"), "error")
   assert.equal(Model.setupCopy("helper").action, "Install helper")
@@ -611,8 +616,9 @@ test("the setup screen names the one step that reaches the mouse", () => {
   assert.equal(Model.setupCopy("outdated").action, "Update helper")
   assert.equal(Model.setupCopy("device").action, "")
   assert.equal(Model.setupCopy("error", "device request failed").body, "device request failed")
-  assert.equal(Model.helperOutdated({ info: {}, onboard: {} }), false, "helpers that do not report a protocol speak 1")
-  assert.equal(Model.helperOutdated({ helper: { version: "0.2.0", protocol: 1 } }), false)
+  assert.equal(Model.helperOutdated({ info: {}, onboard: {} }), true, "helpers that do not report a protocol speak 1, older than this plugin needs")
+  assert.equal(Model.helperOutdated({ helper: { version: "0.1.9", protocol: 1 } }), true)
+  assert.equal(Model.helperOutdated({ helper: { version: "0.2.0", protocol: 2 } }), false)
   assert.equal(Model.helperOutdated({ helper: { version: "0.0.1", protocol: 0.5 } }), true)
   assert.equal(Model.helperInstallCommand("/home/me/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh"),
     "bash '/home/me/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh'")
