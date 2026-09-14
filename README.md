@@ -7,6 +7,8 @@ per monitor, and an overlay and bar indicator that follow your Omarchy theme.
 Omalogi talks to the mouse over HID++ 2.0, writes only what you change, backs up the
 mouse's profile memory before every write, and reads every write back to verify it.
 
+![The Omalogi overlay showing the G502 X's onboard profiles](docs/images/overlay-profiles.png)
+
 ## Supported devices
 
 | Device | USB id | Status |
@@ -133,6 +135,10 @@ The editor has tabs for DPI and report rate, buttons, and G-Shift buttons. **Pre
 runs the same `--dry-run` as the CLI and shows the exact change; **Save to mouse** only
 unlocks after a successful preview of the current edit, asks for confirmation, then does
 the backed-up, verified write. `Esc` cancels an edit.
+
+| DPI and report rate | Buttons |
+| --- | --- |
+| ![Editing DPI stages and report rate](docs/images/overlay-edit-dpi.png) | ![Editing button bindings](docs/images/overlay-edit-buttons.png) |
 
 To open on a profile, or straight into its editor (handy for a Hyprland binding):
 
