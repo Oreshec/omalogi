@@ -4,9 +4,10 @@ import qs.Ui
 import "Model.js" as Model
 
 // The mouse, one view at a time, as G HUB shows it: each button has a label on a thin
-// line that runs to a dot on the button. ‹ › switch between the top and side views, the
-// switch underneath swaps the default and G-Shift layers, and a selected button opens a
-// small menu at its label. Actions dragged from the library drop onto a dot or label.
+// line that runs to a dot on the button. Picture tiles above it switch between the top and
+// side views, the switch underneath swaps the default and G-Shift layers, and a selected
+// button opens a small menu at its label. Actions dragged from the library drop onto a dot
+// or label; dragging one over a view's tile shows that view.
 Item {
   id: canvas
 
@@ -43,12 +44,13 @@ Item {
   readonly property int sideGap: Style.space(64)
   readonly property int footerHeight: Style.space(52)
   readonly property int looseHeight: looseEntries.length > 0 ? labelHeight + Style.spacing.lg : 0
+  readonly property int switcherHeight: views.length > 1 ? Style.space(96) : 0
   readonly property int pictureHeight: Model.fitPictureHeight(
     shownViews,
-    width - 2 * (labelWidth + sideGap) - Style.space(96),
+    width - 2 * (labelWidth + sideGap) - Style.space(32),
     0,
     Style.space(240),
-    Math.max(Style.space(240), height - footerHeight - looseHeight - Style.space(32)))
+    Math.max(Style.space(240), height - switcherHeight - footerHeight - looseHeight - Style.space(32)))
   readonly property var layout: Model.calloutLayout(shownViews, pictureHeight, 0, labelHeight, labelGap)
   readonly property real picturesX: Math.round((width - layout.picturesWidth) / 2)
   readonly property real leftX: picturesX - sideGap - labelWidth
@@ -173,7 +175,8 @@ Item {
     id: content
     width: canvas.width
     height: canvas.layout.height
-    y: Math.max(0, Math.round((canvas.height - canvas.footerHeight - canvas.looseHeight - canvas.layout.height) / 2))
+    y: canvas.switcherHeight + Math.max(0, Math.round(
+      (canvas.height - canvas.switcherHeight - canvas.footerHeight - canvas.looseHeight - canvas.layout.height) / 2))
     visible: canvas.hasPicture
 
     Canvas {
@@ -286,34 +289,76 @@ Item {
     }
   }
 
-  // ‹ › between the top and side views.
-  Caption {
+  // TOP | SIDE: a tile per view with its picture, so the other view is always in sight.
+  Row {
     anchors.horizontalCenter: parent.horizontalCenter
-    y: Math.max(0, content.y - Style.space(28))
+    y: Style.spacing.sm
     visible: canvas.views.length > 1
-    opacity: 0.5
-    font.letterSpacing: 1.5
-    text: canvas.shownViews.length > 0 ? (canvas.shownViews[0].name === "side" ? "SIDE" : "TOP") : ""
-  }
+    spacing: Style.spacing.sm
 
-  PanelActionButton {
-    anchors.left: parent.left
-    y: content.y + canvas.layout.height / 2 - height / 2
-    visible: canvas.views.length > 1
-    iconText: "󰅁"
-    tooltipText: "Previous view"
-    foreground: Color.menu.text
-    onClicked: canvas.viewRequested((canvas.currentView + canvas.views.length - 1) % canvas.views.length)
-  }
+    Repeater {
+      model: canvas.views
 
-  PanelActionButton {
-    anchors.right: parent.right
-    y: content.y + canvas.layout.height / 2 - height / 2
-    visible: canvas.views.length > 1
-    iconText: "󰅂"
-    tooltipText: "Next view"
-    foreground: Color.menu.text
-    onClicked: canvas.viewRequested((canvas.currentView + 1) % canvas.views.length)
+      delegate: Rectangle {
+        id: tile
+        required property var modelData
+        required property int index
+        readonly property bool current: index === canvas.currentView
+
+        width: Style.space(136)
+        height: canvas.switcherHeight - Style.spacing.sm * 2
+        radius: Style.cornerRadius
+        color: current
+          ? Util.alpha(Color.accent, 0.12)
+          : Util.alpha(Color.menu.text, tileArea.containsMouse || tileDrop.containsDrag ? 0.08 : 0.03)
+        border.width: current ? Math.max(2, Style.normalBorderWidth) : Math.max(1, Style.normalBorderWidth)
+        border.color: current ? Color.accent : Util.alpha(Color.menu.text, 0.14)
+
+        Image {
+          anchors.top: parent.top
+          anchors.topMargin: Style.spacing.xs
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: parent.width - Style.spacing.sm * 2
+          height: parent.height - viewName.height - Style.spacing.xs * 3
+          source: "file://" + tile.modelData.image
+          sourceSize.height: 160
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+          smooth: true
+          mipmap: true
+          // Dark mice vanish on a dark tile when dimmed further.
+          opacity: tile.current || tileArea.containsMouse ? 1 : 0.8
+        }
+
+        Caption {
+          id: viewName
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.spacing.xs
+          anchors.horizontalCenter: parent.horizontalCenter
+          font.letterSpacing: 1.5
+          font.bold: tile.current
+          color: tile.current ? Color.accent : Color.menu.text
+          opacity: tile.current ? 1 : 0.6
+          text: String(tile.modelData.name).toUpperCase()
+        }
+
+        MouseArea {
+          id: tileArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: canvas.viewRequested(tile.index)
+        }
+
+        // Dragging an action over a view's tile shows that view, so its buttons can take it.
+        DropArea {
+          id: tileDrop
+          anchors.fill: parent
+          keys: ["omalogi-action"]
+          onEntered: canvas.viewRequested(tile.index)
+        }
+      }
+    }
   }
 
   // Buttons the pictures do not show, such as extra wheel bindings, or every button

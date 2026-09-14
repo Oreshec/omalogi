@@ -57,6 +57,19 @@ that fails its checksum is read again and otherwise refused, never edited.
 Every command that writes has a `--dry-run` that shows the exact change without writing.
 Hardware test results are logged in [docs/hardware-tests.md](docs/hardware-tests.md).
 
+## Install
+
+On Omarchy, one line:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/elberacasa/omalogi/main/install.sh | bash
+```
+
+It downloads the latest release and checks its SHA-256, installs `omalogi` to
+`~/.local/bin`, asks for sudo once to install the udev rule below, and runs
+`omalogi setup`. Run it again to update. On Arch you can instead install the
+[`omalogi`](packaging/aur/omalogi) AUR package and run `omalogi setup`.
+
 ## Install from source
 
 Requirements: Omarchy 4 (Hyprland, omarchy-shell), a Rust toolchain (1.98 or newer).
@@ -146,9 +159,10 @@ omarchy-shell shell toggle io.github.elberacasa.omalogi '{}'
 
 Every profile opens ready to edit, including profiles that are turned off on the mouse.
 
-- **Assignments** shows the mouse one view at a time, as G HUB does: **‹ ›** switch
-  between the top and side views, and the **Default / G-Shift** switch underneath swaps
-  layers. Drag an action from the library onto a button, or select a button and pick one.
+- **Assignments** shows the mouse one view at a time, as G HUB does: the **Front** and
+  **Side** picture tiles above it switch views (dragging an action over a tile switches
+  too), and the **Default / G-Shift** switch underneath swaps layers. Drag an action from
+  the library onto a button, or select a button and pick one.
   The library is grouped (mouse, keyboard, media, DPI, profiles, scroll) and searchable,
   and shows which buttons already use each action. A selected button offers **Use
   default** (the mouse's own factory binding), **Disable**, and **Record a shortcut…**,
