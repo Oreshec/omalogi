@@ -163,6 +163,10 @@ fn profile(out: &mut String, slot: &ProfileSlot) {
 }
 
 fn changes(out: &mut String, before: &Profile, after: &Profile) {
+    if before.name != after.name {
+        let name = |p: &Profile| p.name.clone().unwrap_or_else(|| "(no name)".to_owned());
+        let _ = writeln!(out, "  Name         {} → {}", name(before), name(after));
+    }
     if before.report_rate_ms != after.report_rate_ms {
         let _ = writeln!(
             out,

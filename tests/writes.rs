@@ -447,6 +447,96 @@ async fn a_profile_that_reads_back_corrupt_is_never_edited() {
 }
 
 #[tokio::test]
+async fn turns_profiles_on_and_off_in_the_directory() {
+    let mut h = Harness::new("enable").await;
+    let original = fixture_sectors();
+
+    h.session
+        .set_profile_enabled(3, true)
+        .await
+        .expect("profile 3 turns on");
+    let state = h.session.onboard().await.expect("state");
+    let enabled: Vec<_> = state.profiles.iter().map(|slot| slot.enabled).collect();
+    assert_eq!(enabled, [true, true, true, false, false]);
+    assert_eq!(h.committed(), [0]);
+    assert!(sector_crc_valid(&h.sector(0)));
+
+    h.session
+        .set_profile_enabled(3, false)
+        .await
+        .expect("profile 3 turns off again");
+    assert_eq!(
+        h.sector(0),
+        original[&0],
+        "the directory is exactly as before"
+    );
+
+    assert!(matches!(
+        h.session.set_profile_enabled(3, false).await,
+        Err(EditError::NoChanges)
+    ));
+    assert!(matches!(
+        h.session.set_profile_enabled(1, false).await,
+        Err(EditError::ActiveProfile(1))
+    ));
+    assert!(matches!(
+        h.session.set_profile_enabled(9, true).await,
+        Err(EditError::NoSuchProfile { number: 9, .. })
+    ));
+
+    // With profile 2 off and profile 3 selected, profile 1 is the last one on.
+    h.session
+        .set_profile_enabled(2, false)
+        .await
+        .expect("profile 2 turns off");
+    h.state.lock().expect("state").current_profile = 3;
+    assert!(matches!(
+        h.session.set_profile_enabled(1, false).await,
+        Err(EditError::LastEnabledProfile(1))
+    ));
+}
+
+#[tokio::test]
+async fn names_a_profile_and_clears_the_name() {
+    let mut h = Harness::new("name").await;
+    let named = |name: &str| ProfileChanges {
+        name: Some(name.to_owned()),
+        ..ProfileChanges::default()
+    };
+
+    let report = h
+        .session
+        .apply_profile_changes(3, &named("Omalogi Test"), &h.backup_path("named"))
+        .await
+        .expect("name is written");
+    assert_eq!(report.plan.after.name.as_deref(), Some("Omalogi Test"));
+    let state = h.session.onboard().await.expect("state");
+    assert_eq!(
+        state.profiles[2].profile.name.as_deref(),
+        Some("Omalogi Test")
+    );
+
+    h.session
+        .apply_profile_changes(3, &named(""), &h.backup_path("cleared"))
+        .await
+        .expect("name is cleared");
+    assert_eq!(
+        h.sector(3),
+        fixture_sectors()[&3],
+        "back to the unwritten name"
+    );
+
+    let writes = h.write_requests();
+    for bad in ["Ömalogi", &"x".repeat(48)] {
+        assert!(matches!(
+            h.session.plan_profile_changes(3, &named(bad)).await,
+            Err(EditError::InvalidName(_))
+        ));
+    }
+    assert_eq!(h.write_requests(), writes);
+}
+
+#[tokio::test]
 async fn refuses_backups_that_do_not_fit() {
     let mut h = Harness::new("mismatch").await;
     let good = h.backup_path("good");

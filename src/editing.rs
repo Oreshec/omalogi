@@ -24,7 +24,7 @@ use crate::{
     },
     onboard::{
         Mode, OnboardError, OnboardProfilesFeature,
-        edit::{ProfileEditor, Table},
+        edit::{MAX_NAME_LEN, ProfileEditor, Table, directory_with_enabled},
         format::{self, Binding, DPI_STAGE_COUNT, Description, Profile},
     },
 };
@@ -88,6 +88,12 @@ pub enum EditError {
          changed; if this persists, restore a backup"
     )]
     CorruptSector { sector: u16 },
+    #[error("`{0}` is not a usable profile name: use up to 47 printable ASCII characters")]
+    InvalidName(String),
+    #[error("profile {0} is in use; activate another profile before turning it off")]
+    ActiveProfile(usize),
+    #[error("profile {0} is the only profile turned on; turn another one on first")]
+    LastEnabledProfile(usize),
     #[error("the data for profile {number} is not a valid profile for this mouse")]
     InvalidProfileSector { number: usize },
     #[error(
@@ -122,6 +128,8 @@ pub struct ProfileChanges {
     pub report_rate_hz: Option<u16>,
     pub buttons: Vec<(usize, Binding)>,
     pub gshift_buttons: Vec<(usize, Binding)>,
+    /// A new profile name; an empty name clears it.
+    pub name: Option<String>,
 }
 
 impl ProfileChanges {
@@ -376,6 +384,15 @@ impl Session {
             editor.set_report_rate_ms(interval);
         }
 
+        if let Some(name) = &changes.name {
+            let name = name.trim();
+            if name.len() > MAX_NAME_LEN || !name.bytes().all(|byte| (0x20..=0x7E).contains(&byte))
+            {
+                return Err(EditError::InvalidName(name.to_owned()));
+            }
+            editor.set_name(Some(name));
+        }
+
         let tables = [
             (Table::Buttons, "buttons", &changes.buttons, &before.buttons),
             (
@@ -543,6 +560,71 @@ impl Session {
                 })
             }
         }
+    }
+
+    /// Checks that profile `number` can be turned on or off, without writing.
+    pub async fn check_profile_enabled(
+        &mut self,
+        number: usize,
+        enabled: bool,
+    ) -> Result<(), EditError> {
+        self.plan_enabled(number, enabled).await.map(|_| ())
+    }
+
+    /// Turns profile `number` on or off in the profile directory, verified and rolled back
+    /// on a mismatch. The profile in use, or the only one turned on, cannot be turned off.
+    /// The caller makes sure a backup exists first.
+    pub async fn set_profile_enabled(
+        &mut self,
+        number: usize,
+        enabled: bool,
+    ) -> Result<(), EditError> {
+        let (previous, edited) = self.plan_enabled(number, enabled).await?;
+        let feature = self.onboard_feature().await?;
+        write_verified(&feature, format::USER_DIRECTORY_SECTOR, &edited, &previous).await
+    }
+
+    /// The directory as read, and with the profile's flag changed.
+    async fn plan_enabled(
+        &mut self,
+        number: usize,
+        enabled: bool,
+    ) -> Result<(Vec<u8>, Vec<u8>), EditError> {
+        let feature = self.onboard_feature().await?;
+        let description = feature.description().await?;
+        let previous = read_user_sector(
+            &feature,
+            format::USER_DIRECTORY_SECTOR,
+            description.sector_size,
+        )
+        .await?;
+        let entries = format::parse_directory(&previous, description.profile_count.into());
+        let Some(position) = number
+            .checked_sub(1)
+            .filter(|&position| position < entries.len())
+        else {
+            return Err(EditError::NoSuchProfile {
+                number,
+                count: entries.len(),
+            });
+        };
+        if entries[position].enabled == enabled {
+            return Err(EditError::NoChanges);
+        }
+        if !enabled {
+            let index = feature
+                .current_profile_index()
+                .await
+                .map_err(SessionError::from)?;
+            if format::current_profile_position(index) == Some(position) {
+                return Err(EditError::ActiveProfile(number));
+            }
+            if entries.iter().filter(|entry| entry.enabled).count() <= 1 {
+                return Err(EditError::LastEnabledProfile(number));
+            }
+        }
+        let edited = directory_with_enabled(&previous, position, enabled);
+        Ok((previous, edited))
     }
 
     /// The user sectors that differ from `backup`, after checking it belongs to this mouse.

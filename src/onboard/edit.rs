@@ -5,9 +5,29 @@
 //! unchanged, unlike rebuilding the sector from a struct.
 
 use super::format::{
-    BINDING_LEN, BUTTON_OFFSET, BUTTON_SLOTS, Binding, DPI_OFFSET, DPI_STAGE_COUNT, DecodeError,
-    Description, GSHIFT_BUTTON_OFFSET, MIN_SECTOR_LEN, crc_ccitt,
+    BINDING_LEN, BUTTON_OFFSET, BUTTON_SLOTS, Binding, DIRECTORY_ENTRY_LEN, DPI_OFFSET,
+    DPI_STAGE_COUNT, DecodeError, Description, GSHIFT_BUTTON_OFFSET, MIN_SECTOR_LEN, NAME_LEN,
+    NAME_OFFSET, crc_ccitt, decode_name,
 };
+
+/// The longest profile name: the 48-byte field keeps a terminating NUL, as libratbag writes it.
+pub const MAX_NAME_LEN: usize = NAME_LEN - 1;
+
+/// A directory sector with profile `position`'s enabled flag set and a new CRC. Entries are
+/// `[0x00, profile number, enabled, 0x00]`; only the flag byte and the CRC change.
+///
+/// # Panics
+///
+/// When `position` is outside the directory; callers validate it first.
+#[must_use]
+pub fn directory_with_enabled(directory: &[u8], position: usize, enabled: bool) -> Vec<u8> {
+    let mut data = directory.to_vec();
+    data[position * DIRECTORY_ENTRY_LEN + 2] = u8::from(enabled);
+    let crc_at = data.len() - 2;
+    let crc = crc_ccitt(&data[..crc_at]);
+    data[crc_at..].copy_from_slice(&crc.to_be_bytes());
+    data
+}
 
 impl Binding {
     /// The 4-byte encoding that [`Binding::decode`] reads.
@@ -109,6 +129,29 @@ impl ProfileEditor {
         );
         if current != binding {
             self.data[at..at + BINDING_LEN].copy_from_slice(&binding.encode());
+        }
+    }
+
+    /// Sets the profile name, printable ASCII of at most [`MAX_NAME_LEN`] bytes that the
+    /// caller has validated, stored NUL-padded as libratbag writes it. `None` clears it to
+    /// the unwritten state, all 0xFF. The field is left alone when the name is unchanged.
+    ///
+    /// # Panics
+    ///
+    /// When `name` is longer than [`MAX_NAME_LEN`] bytes.
+    pub fn set_name(&mut self, name: Option<&str>) {
+        let name = name.filter(|name| !name.is_empty());
+        let field = NAME_OFFSET..NAME_OFFSET + NAME_LEN;
+        if decode_name(&self.data[field.clone()]).as_deref() == name {
+            return;
+        }
+        match name {
+            Some(name) => {
+                assert!(name.len() <= MAX_NAME_LEN, "profile name too long");
+                self.data[field.clone()].fill(0);
+                self.data[NAME_OFFSET..NAME_OFFSET + name.len()].copy_from_slice(name.as_bytes());
+            }
+            None => self.data[field].fill(0xFF),
         }
     }
 
@@ -226,6 +269,66 @@ mod tests {
                 action: Some(SpecialAction::ShiftDpi),
                 profile: 0
             }
+        );
+    }
+
+    #[test]
+    fn name_edit_touches_only_the_name_and_crc() {
+        let sector = fixture_hex("/onboard/sectors/0003");
+        let mut editor = ProfileEditor::new(&sector, &description()).expect("editor");
+        editor.set_name(Some("Omalogi Test"));
+        let named = editor.finish();
+
+        let field = NAME_OFFSET..NAME_OFFSET + NAME_LEN;
+        let changed = changed_offsets(&sector, &named);
+        assert!(!changed.is_empty());
+        assert!(
+            changed
+                .iter()
+                .all(|at| field.contains(at) || [253, 254].contains(at)),
+            "{changed:?}"
+        );
+        assert!(sector_crc_valid(&named));
+        let profile = Profile::parse(&named, &description()).expect("profile");
+        assert_eq!(profile.name.as_deref(), Some("Omalogi Test"));
+
+        // Setting the same name again changes nothing; clearing it restores 0xFF.
+        let mut editor = ProfileEditor::new(&named, &description()).expect("editor");
+        editor.set_name(Some("Omalogi Test"));
+        assert_eq!(editor.finish(), named);
+        let mut editor = ProfileEditor::new(&named, &description()).expect("editor");
+        editor.set_name(None);
+        let cleared = editor.finish();
+        assert!(cleared[field].iter().all(|&byte| byte == 0xFF));
+        assert_eq!(
+            Profile::parse(&cleared, &description())
+                .expect("profile")
+                .name,
+            None
+        );
+    }
+
+    #[test]
+    fn enabling_a_profile_touches_only_its_flag_and_crc() {
+        let directory = fixture_hex("/onboard/sectors/0000");
+        let before = crate::onboard::format::parse_directory(&directory, 5);
+        let edited = directory_with_enabled(&directory, 2, !before[2].enabled);
+
+        let changed = changed_offsets(&directory, &edited);
+        assert!(
+            changed
+                .iter()
+                .all(|at| [2 * DIRECTORY_ENTRY_LEN + 2, 253, 254].contains(at)),
+            "{changed:?}"
+        );
+        assert!(sector_crc_valid(&edited));
+        let after = crate::onboard::format::parse_directory(&edited, 5);
+        assert_eq!(after[2].enabled, !before[2].enabled);
+        assert_eq!(after[2].sector, before[2].sector);
+        assert_eq!(after[0], before[0]);
+        assert_eq!(
+            directory_with_enabled(&edited, 2, before[2].enabled),
+            directory
         );
     }
 

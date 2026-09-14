@@ -21,15 +21,15 @@ pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 4)];
 
 const DESCRIPTION_LEN: usize = 11;
 const DIRECTORY_END: u16 = 0xFFFF;
-const DIRECTORY_ENTRY_LEN: usize = 4;
+pub(crate) const DIRECTORY_ENTRY_LEN: usize = 4;
 pub(crate) const DPI_STAGE_COUNT: usize = 5;
 pub(crate) const DPI_OFFSET: usize = 3;
 pub(crate) const BUTTON_SLOTS: usize = 16;
 pub(crate) const BINDING_LEN: usize = 4;
 pub(crate) const BUTTON_OFFSET: usize = 32;
 pub(crate) const GSHIFT_BUTTON_OFFSET: usize = BUTTON_OFFSET + BUTTON_SLOTS * BINDING_LEN;
-const NAME_OFFSET: usize = GSHIFT_BUTTON_OFFSET + BUTTON_SLOTS * BINDING_LEN;
-const NAME_LEN: usize = 48;
+pub(crate) const NAME_OFFSET: usize = GSHIFT_BUTTON_OFFSET + BUTTON_SLOTS * BINDING_LEN;
+pub(crate) const NAME_LEN: usize = 48;
 pub(crate) const MIN_SECTOR_LEN: usize = NAME_OFFSET + NAME_LEN;
 const MAX_SECTOR_LEN: usize = 4096;
 
@@ -318,7 +318,7 @@ fn bindings_at(sector: &[u8], offset: usize) -> [Binding; BUTTON_SLOTS] {
     })
 }
 
-fn decode_name(raw: &[u8]) -> Option<String> {
+pub(crate) fn decode_name(raw: &[u8]) -> Option<String> {
     let end = raw
         .iter()
         .position(|&byte| byte == 0x00 || byte == 0xFF)

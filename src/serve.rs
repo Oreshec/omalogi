@@ -63,6 +63,11 @@ enum Command {
     },
     /// Puts back what the latest write in this session replaced.
     Undo,
+    /// Turns a profile on or off; answers with every profile.
+    SetEnabled {
+        profile: usize,
+        enabled: bool,
+    },
 }
 
 /// The changes `profiles edit` takes, as JSON. Slots are keys: `{"3": "key:ctrl+t"}`.
@@ -76,6 +81,8 @@ struct Changes {
     shift_dpi: Option<u16>,
     #[serde(default)]
     rate: Option<u16>,
+    #[serde(default)]
+    name: Option<String>,
     // String keys: a flattened struct in a tagged enum cannot read JSON keys as numbers.
     #[serde(default)]
     buttons: BTreeMap<String, String>,
@@ -103,6 +110,7 @@ impl Changes {
             report_rate_hz: self.rate,
             buttons: bindings(self.buttons)?,
             gshift_buttons: bindings(self.gshift)?,
+            name: self.name,
         })
     }
 }
@@ -193,7 +201,34 @@ impl Server {
                     .map_err(|e| error_chain(e.as_ref()))
             }
             Command::Undo => self.undo().await.map_err(|e| error_chain(e.as_ref())),
+            Command::SetEnabled { profile, enabled } => self
+                .set_enabled(profile, enabled)
+                .await
+                .map_err(|e| error_chain(e.as_ref())),
         }
+    }
+
+    /// Saves a backup of all profile memory before this session's first write.
+    async fn ensure_backup(&mut self) -> Result<(), Box<dyn Error>> {
+        if self.backup.is_none() {
+            let backup = self.session.backup().await?;
+            let path = (self.backup_path)(self.session.model().name)?;
+            save_backup(&backup, &path)?;
+            self.backup = Some(path);
+        }
+        Ok(())
+    }
+
+    async fn set_enabled(
+        &mut self,
+        profile: usize,
+        enabled: bool,
+    ) -> Result<Value, Box<dyn Error>> {
+        self.session.check_profile_enabled(profile, enabled).await?;
+        self.ensure_backup().await?;
+        self.session.set_profile_enabled(profile, enabled).await?;
+        let onboard = self.session.onboard().await?;
+        Ok(json!({ "onboard": onboard, "backup": self.backup }))
     }
 
     async fn apply(
@@ -207,12 +242,7 @@ impl Server {
             Err(EditError::NoChanges) => return self.slot_result(profile, None).await,
             Err(error) => return Err(error.into()),
         };
-        if self.backup.is_none() {
-            let backup = self.session.backup().await?;
-            let path = (self.backup_path)(self.session.model().name)?;
-            save_backup(&backup, &path)?;
-            self.backup = Some(path);
-        }
+        self.ensure_backup().await?;
         let takes_effect = self.session.write_plan(&plan).await?;
         self.undo.push(UndoStep {
             profile,

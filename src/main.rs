@@ -114,6 +114,10 @@ enum DeviceCommand {
 enum ProfilesAction {
     /// Make an enabled profile active. Numbers are as listed by `omalogi profiles`.
     Activate { number: usize },
+    /// Turn a profile on, so the mouse can switch to it. Profile memory is backed up first.
+    Enable { number: usize },
+    /// Turn a profile off. The profile in use and the last one turned on cannot be.
+    Disable { number: usize },
     /// Change a profile's DPI stages, report rate or buttons.
     ///
     /// Profile memory is backed up to $XDG_STATE_HOME/omalogi/backups/ first, and the
@@ -136,6 +140,9 @@ enum ProfilesAction {
         /// Report rate in Hz, e.g. 1000.
         #[arg(long)]
         rate: Option<u16>,
+        /// Profile name, up to 47 printable ASCII characters; an empty name clears it.
+        #[arg(long)]
+        name: Option<String>,
         /// A button binding as SLOT=ACTION, e.g. 6=key:ctrl+t. Repeat for more.
         #[arg(long = "button", value_name = "SLOT=ACTION", value_parser = parse_slot_action)]
         buttons: Vec<(usize, Binding)>,
@@ -321,12 +328,50 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
         }
         DeviceCommand::Profiles {
             action:
+                Some(
+                    action @ (ProfilesAction::Enable { number }
+                    | ProfilesAction::Disable { number }),
+                ),
+        } => {
+            let enabled = matches!(action, ProfilesAction::Enable { .. });
+            // Refuse before the backup, so a no-op or a refused change writes nothing at all.
+            session.check_profile_enabled(number, enabled).await?;
+            let path = default_backup_path(session.model().name)?;
+            save_backup(&session.backup().await?, &path)?;
+            session.set_profile_enabled(number, enabled).await?;
+            let state = session.onboard().await?;
+            #[derive(Serialize)]
+            struct Toggled<'a> {
+                profile: usize,
+                enabled: bool,
+                backup: &'a PathBuf,
+            }
+            output(
+                json,
+                &Toggled {
+                    profile: number,
+                    enabled,
+                    backup: &path,
+                },
+                || {
+                    format!(
+                        "Profile {number} is now turned {}\nBackup saved to {}\n\n{}",
+                        if enabled { "on" } else { "off" },
+                        path.display(),
+                        text::profiles(&state)
+                    )
+                },
+            )?;
+        }
+        DeviceCommand::Profiles {
+            action:
                 Some(ProfilesAction::Edit {
                     number,
                     dpi,
                     default_dpi,
                     shift_dpi,
                     rate,
+                    name,
                     buttons,
                     gshift_buttons,
                     dry_run,
@@ -339,9 +384,10 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
                 report_rate_hz: rate,
                 buttons,
                 gshift_buttons,
+                name,
             };
             if changes.is_empty() {
-                return Err("nothing to change; pass --dpi, --default-dpi, --shift-dpi, --rate, --button or --gshift".into());
+                return Err("nothing to change; pass --dpi, --default-dpi, --shift-dpi, --rate, --name, --button or --gshift".into());
             }
             if dry_run {
                 let plan = session.plan_profile_changes(number, &changes).await?;
