@@ -45,6 +45,40 @@ const MEDIA: &[(&str, u16)] = &[
     ("previous-track", 0x00B6),
 ];
 
+/// Keys other than letters, digits and F1–F24: (name after `key:`, HID usage, label).
+const NAMED_KEYS: &[(&str, u8, &str)] = &[
+    ("enter", 0x28, "Enter"),
+    ("esc", 0x29, "Esc"),
+    ("backspace", 0x2A, "Backspace"),
+    ("tab", 0x2B, "Tab"),
+    ("space", 0x2C, "Space"),
+    ("minus", 0x2D, "-"),
+    ("equal", 0x2E, "="),
+    ("leftbracket", 0x2F, "["),
+    ("rightbracket", 0x30, "]"),
+    ("backslash", 0x31, "\\"),
+    ("semicolon", 0x33, ";"),
+    ("apostrophe", 0x34, "'"),
+    ("grave", 0x35, "`"),
+    ("comma", 0x36, ","),
+    ("period", 0x37, "."),
+    ("slash", 0x38, "/"),
+    ("capslock", 0x39, "Caps Lock"),
+    ("printscreen", 0x46, "Print Screen"),
+    ("scrolllock", 0x47, "Scroll Lock"),
+    ("pause", 0x48, "Pause"),
+    ("insert", 0x49, "Insert"),
+    ("home", 0x4A, "Home"),
+    ("pageup", 0x4B, "Page Up"),
+    ("delete", 0x4C, "Delete"),
+    ("end", 0x4D, "End"),
+    ("pagedown", 0x4E, "Page Down"),
+    ("right", 0x4F, "Right"),
+    ("left", 0x50, "Left"),
+    ("down", 0x51, "Down"),
+    ("up", 0x52, "Up"),
+];
+
 impl SpecialAction {
     /// The firmware code [`SpecialAction::from_code`] maps from.
     #[must_use]
@@ -230,17 +264,19 @@ fn key_text(usage: u8) -> Option<String> {
         0x04..=0x1D => char::from(b'a' + (usage - 0x04)).to_string(),
         0x1E..=0x26 => char::from(b'1' + (usage - 0x1E)).to_string(),
         0x27 => "0".to_owned(),
-        0x28 => "enter".to_owned(),
-        0x29 => "esc".to_owned(),
-        0x2A => "backspace".to_owned(),
-        0x2B => "tab".to_owned(),
-        0x2C => "space".to_owned(),
         0x3A..=0x45 => format!("f{}", usage - 0x39),
-        0x4F => "right".to_owned(),
-        0x50 => "left".to_owned(),
-        0x51 => "down".to_owned(),
-        0x52 => "up".to_owned(),
-        _ => return None,
+        0x68..=0x73 => format!("f{}", usage - 0x68 + 13),
+        _ => (*NAMED_KEYS.iter().find(|(_, key, _)| *key == usage)?.0).to_owned(),
+    })
+}
+
+/// How a HID keyboard usage is shown, e.g. `T`, `F13` or `Page Up`.
+pub(crate) fn key_label(usage: u8) -> Option<String> {
+    Some(match usage {
+        0x04..=0x1D => char::from(b'A' + (usage - 0x04)).to_string(),
+        0x1E..=0x27 => key_text(usage)?,
+        0x3A..=0x45 | 0x68..=0x73 => key_text(usage)?.to_uppercase(),
+        _ => (*NAMED_KEYS.iter().find(|(_, key, _)| *key == usage)?.2).to_owned(),
     })
 }
 
@@ -266,7 +302,12 @@ fn parse_key(combo: &str) -> Result<Binding, String> {
     }
     let key = key_usage(key_name).ok_or_else(|| {
         format!(
-            "unknown key `{key_name}`; use a-z, 0-9, f1-f12, enter, esc, backspace, tab, space, left, right, up, down"
+            "unknown key `{key_name}`; use a-z, 0-9, f1-f24, {}",
+            NAMED_KEYS
+                .iter()
+                .map(|(name, ..)| *name)
+                .collect::<Vec<_>>()
+                .join(", ")
         )
     })?;
     Ok(Binding::Key { modifiers, key })
@@ -274,28 +315,21 @@ fn parse_key(combo: &str) -> Result<Binding, String> {
 
 /// HID keyboard usage for a key name.
 fn key_usage(name: &str) -> Option<u8> {
-    let bytes = name.as_bytes();
-    Some(match (name, bytes) {
-        (_, [letter @ b'a'..=b'z']) => 0x04 + (letter - b'a'),
-        (_, [b'0']) => 0x27,
-        (_, [digit @ b'1'..=b'9']) => 0x1E + (digit - b'1'),
-        ("enter", _) => 0x28,
-        ("esc", _) => 0x29,
-        ("backspace", _) => 0x2A,
-        ("tab", _) => 0x2B,
-        ("space", _) => 0x2C,
-        ("right", _) => 0x4F,
-        ("left", _) => 0x50,
-        ("down", _) => 0x51,
-        ("up", _) => 0x52,
-        _ => {
-            let number: u8 = name.strip_prefix('f')?.parse().ok()?;
-            if !(1..=12).contains(&number) {
-                return None;
-            }
-            0x39 + number
-        }
-    })
+    match name.as_bytes() {
+        [letter @ b'a'..=b'z'] => return Some(0x04 + (letter - b'a')),
+        [b'0'] => return Some(0x27),
+        [digit @ b'1'..=b'9'] => return Some(0x1E + (digit - b'1')),
+        _ => {}
+    }
+    if let Some(&(_, usage, _)) = NAMED_KEYS.iter().find(|(key, ..)| *key == name) {
+        return Some(usage);
+    }
+    let number: u8 = name.strip_prefix('f')?.parse().ok()?;
+    match number {
+        1..=12 => Some(0x39 + number),
+        13..=24 => Some(0x68 + (number - 13)),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -362,8 +396,8 @@ mod tests {
                 .contains("missing key")
         );
         assert!(
-            parse_action("key:f13")
-                .expect_err("f13")
+            parse_action("key:f25")
+                .expect_err("f25")
                 .contains("unknown key")
         );
         assert!(
@@ -447,7 +481,40 @@ mod tests {
         assert_eq!(text([0x80, 0x02, 0x10, 0x17]), None, "right ctrl");
         assert_eq!(text([0x80, 0x01, 0x00, 0x03]), None, "two mouse buttons");
         assert_eq!(text([0x90, 0x0C, 0x00, 0x00]), None, "battery indicator");
-        assert_eq!(text([0x80, 0x02, 0x00, 0x68]), None, "unnamed key");
+        assert_eq!(text([0x80, 0x02, 0x00, 0x64]), None, "unnamed key");
+    }
+
+    #[test]
+    fn every_key_name_round_trips() {
+        let names = (b'a'..=b'z')
+            .map(|letter| char::from(letter).to_string())
+            .chain((0..=9).map(|digit| digit.to_string()))
+            .chain((1..=24).map(|number| format!("f{number}")))
+            .chain(NAMED_KEYS.iter().map(|(name, ..)| (*name).to_owned()));
+        for name in names {
+            let text = format!("key:ctrl+{name}");
+            let binding = parse_action(&text).expect("key name parses");
+            assert_eq!(action_text(&binding).as_deref(), Some(text.as_str()));
+            assert!(!label_of(&text).contains("0x"), "{text} has no label");
+        }
+        assert_eq!(label_of("key:ctrl+pageup"), "Ctrl+Page Up");
+        assert_eq!(label_of("key:super+f24"), "Super+F24");
+        assert_eq!(label_of("key:alt+backslash"), "Alt+\\");
+    }
+
+    #[test]
+    fn the_shortcut_recorder_only_produces_accepted_keys() {
+        let model = include_str!("../../plugin/Model.js");
+        let start = model
+            .find("var EVDEV_KEYS = {")
+            .expect("EVDEV_KEYS in Model.js");
+        let table = &model[start..];
+        let table = &table[..table.find('}').expect("end of EVDEV_KEYS")];
+        let names: Vec<&str> = table.split('"').skip(1).step_by(2).collect();
+        assert!(names.len() >= 90, "only {} keys", names.len());
+        for name in names {
+            assert!(parse_action(&format!("key:{name}")).is_ok(), "{name}");
+        }
     }
 
     #[test]

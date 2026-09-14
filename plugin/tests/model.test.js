@@ -285,6 +285,98 @@ test("action picker groups key combos and keeps unknown current bindings", () =>
   })
 })
 
+const QT = { SHIFT: 0x02000000, CTRL: 0x04000000, ALT: 0x08000000, META: 0x10000000 }
+const scan = (evdev) => evdev + 8
+
+test("recordKey turns physical keys into shortcuts", () => {
+  assert.deepEqual(plain(Model.recordKey(scan(20), QT.CTRL | QT.SHIFT)), {
+    combo: "ctrl+shift+t",
+    waiting: false,
+    unsupported: false
+  })
+  // The physical key, whatever Shift would type on the layout.
+  assert.equal(Model.recordKey(scan(2), QT.SHIFT).combo, "shift+1")
+  assert.equal(Model.recordKey(scan(183), QT.META | QT.ALT).combo, "alt+super+f13")
+  assert.equal(Model.recordKey(scan(104), 0).combo, "pageup")
+  assert.deepEqual(plain(Model.recordKey(scan(29), QT.CTRL)), { combo: "", waiting: true, unsupported: false })
+  assert.deepEqual(plain(Model.recordKey(scan(240), 0)), { combo: "", waiting: false, unsupported: true })
+})
+
+test("comboLabel shows shortcuts like the mouse's labels", () => {
+  assert.equal(Model.comboLabel("ctrl+shift+tab"), "Ctrl+Shift+Tab")
+  assert.equal(Model.comboLabel("super+f13"), "Super+F13")
+  assert.equal(Model.comboLabel("ctrl+pageup"), "Ctrl+Page Up")
+  assert.equal(Model.comboLabel("alt+backslash"), "Alt+\\")
+  assert.equal(Model.comboLabel(""), "")
+})
+
+test("actionSections groups in display order and filters", () => {
+  const catalog = [
+    { value: "dpi-up", label: "DPI up", group: "DPI" },
+    { value: "back", label: "back", group: "Mouse" },
+    { value: "media:mute", label: "mute", group: "Media" },
+    { value: "key:", label: "Keyboard shortcut…", group: "Keyboard" },
+    { value: "custom", label: "custom", group: "Extra" }
+  ]
+  assert.deepEqual(
+    plain(Model.actionSections(catalog, "")).map((section) => section.group),
+    ["Mouse", "Keyboard", "Media", "DPI", "Extra"]
+  )
+  assert.deepEqual(plain(Model.actionSections(catalog, "  DPI ")), [
+    { group: "DPI", actions: [{ value: "dpi-up", label: "DPI up", group: "DPI" }] }
+  ])
+  assert.deepEqual(
+    plain(Model.actionSections(catalog, "shortcut")).map((section) => section.group),
+    ["Keyboard"]
+  )
+  assert.deepEqual(plain(Model.actionSections(catalog, "nothing like this")), [])
+})
+
+test("calloutLayout puts cards beside their buttons without overlap", () => {
+  const views = [
+    {
+      width: 1000, height: 2000, image: "/front.png",
+      hotspots: [
+        { slot: 0, x: 0.3, y: 0.2 },
+        { slot: 9, x: 0.2, y: 0.22 },
+        { slot: 1, x: 0.8, y: 0.2 },
+        { slot: 2, x: 0.5, y: 0.3 }
+      ]
+    },
+    { width: 500, height: 2000, image: "/side.png", hotspots: [{ slot: 4, x: 0.2, y: 0.5 }] }
+  ]
+  const layout = plain(Model.calloutLayout(views, 400, 20, 40, 8))
+  assert.equal(layout.picturesWidth, 200 + 20 + 100)
+  assert.equal(layout.height, 400)
+  assert.deepEqual(layout.left.map((card) => card.slot), [0, 9])
+  assert.deepEqual(layout.right.map((card) => card.slot), [1, 2, 4])
+  for (const side of [layout.left, layout.right]) {
+    side.forEach((card, i) => {
+      assert.ok(card.cardY >= 0 && card.cardY <= 400 - 40, `card ${card.slot} inside`)
+      if (i > 0) assert.ok(card.cardY >= side[i - 1].cardY + 48, `card ${card.slot} clear of the one above`)
+    })
+  }
+  // The side view's button sits at its own offset.
+  assert.equal(layout.right[2].x, 220 + 0.2 * 100)
+  // Too many cards for the height: stacked, and the canvas grows.
+  const crowded = [{ width: 100, height: 100, image: "/x.png", hotspots: [0, 1, 2, 3, 4, 5].map((slot) => ({ slot, x: 0.9, y: 0.5 })) }]
+  const tall = plain(Model.calloutLayout(crowded, 100, 0, 30, 6))
+  assert.deepEqual(tall.right.map((card) => card.cardY), [0, 36, 72, 108, 144, 180])
+  assert.equal(tall.height, 210)
+})
+
+test("changedSlots and changeCount track unsaved edits", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  assert.equal(Model.changeCount(original, original), 0)
+  let draft = Model.setBinding(original, "buttons", 3, "key:ctrl+t")
+  draft = Model.setBinding(draft, "gshift", 1, "media:mute")
+  draft = Model.setField(draft, "rateHz", 500)
+  assert.deepEqual(plain(Model.changedSlots(draft, original, "buttons")), [3])
+  assert.deepEqual(plain(Model.changedSlots(draft, original, "gshift")), [1])
+  assert.equal(Model.changeCount(draft, original), 3)
+  assert.equal(Model.changeCount(null, original), 0)
+})
+
 test("pictureViews keeps only usable views", () => {
   assert.deepEqual(plain(Model.pictureViews(null)), [])
   assert.deepEqual(plain(Model.pictureViews({})), [])

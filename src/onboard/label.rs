@@ -70,22 +70,7 @@ fn mouse_buttons(mask: u16) -> String {
 
 /// Names for HID keyboard usages (usage page 0x07).
 fn key_name(usage: u8) -> String {
-    match usage {
-        0x04..=0x1D => char::from(b'A' + (usage - 0x04)).to_string(),
-        0x1E..=0x26 => char::from(b'1' + (usage - 0x1E)).to_string(),
-        0x27 => "0".to_owned(),
-        0x28 => "Enter".to_owned(),
-        0x29 => "Esc".to_owned(),
-        0x2A => "Backspace".to_owned(),
-        0x2B => "Tab".to_owned(),
-        0x2C => "Space".to_owned(),
-        0x3A..=0x45 => format!("F{}", usage - 0x39),
-        0x4F => "Right".to_owned(),
-        0x50 => "Left".to_owned(),
-        0x51 => "Down".to_owned(),
-        0x52 => "Up".to_owned(),
-        _ => format!("key 0x{usage:02X}"),
-    }
+    super::action::key_label(usage).unwrap_or_else(|| format!("key 0x{usage:02X}"))
 }
 
 /// Names for HID consumer-control usages (usage page 0x0C).
@@ -142,7 +127,7 @@ mod tests {
     #[test]
     fn falls_back_to_codes_for_unnamed_values() {
         let label = |raw| binding(&Binding::decode(raw));
-        assert_eq!(label([0x80, 0x02, 0x00, 0x68]), "key 0x68");
+        assert_eq!(label([0x80, 0x02, 0x00, 0x64]), "key 0x64");
         assert_eq!(label([0x80, 0x01, 0x00, 0x40]), "mouse button 7");
         assert_eq!(label([0x90, 0x42, 0x00, 0x00]), "firmware action 0x42");
         assert_eq!(
