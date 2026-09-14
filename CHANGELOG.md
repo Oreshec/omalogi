@@ -1,0 +1,27 @@
+# Changelog
+
+All notable changes are listed here. The project follows
+[Semantic Versioning](https://semver.org).
+
+## Unreleased
+
+### Added
+
+- `omalogi info`, `omalogi profiles` and `omalogi backup`: device, firmware, DPI and
+  report rate; onboard profiles with DPI stages and button bindings; a full backup of
+  profile memory. Every command supports `--json`.
+- `omalogi profiles activate <N>` switches the active onboard profile and reads it back.
+- `omalogi profiles edit <N>` changes DPI stages, the default and DPI-shift stages, the
+  report rate and button and G-Shift bindings, with `--dry-run`. Each write is preceded
+  by an automatic backup, verified by reading it back, and rolled back on a mismatch.
+- `omalogi restore <FILE>` writes profile memory back from a backup, with `--dry-run`.
+- `omalogi daemon` switches profiles per app and per monitor from rules in
+  `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.
+- Omarchy shell plugin: an overlay for profiles, DPI stages and bindings, and a bar
+  indicator for the active profile.
+- udev rule granting the active session access to the G502 X's HID++ interface only.
+- systemd user unit for the daemon.
+
+### Supported devices
+
+- Logitech G502 X, wired (046d:c099), tested on real hardware.
