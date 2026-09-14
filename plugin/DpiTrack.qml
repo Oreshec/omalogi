@@ -27,7 +27,11 @@ Item {
   property real dragFraction: 0
   property bool dragRemoving: false
 
-  implicitHeight: Style.space(118)
+  // Rows from top to bottom: level values, the bar, Default and Shift tags, the scale.
+  readonly property real tagY: lineY + nodeSize - Style.space(2)
+  readonly property real scaleY: lineY + Style.space(46)
+
+  implicitHeight: scaleY + Style.space(22)
 
   function fractionAt(x) {
     return Math.max(0, Math.min(1, x / Math.max(1, track.width)))
@@ -86,11 +90,11 @@ Item {
     delegate: Item {
       required property var modelData
       x: modelData.fraction * track.width
-      y: track.lineY + Style.space(22)
+      y: track.scaleY
 
       Rectangle {
         x: -width / 2
-        y: -Style.space(10)
+        y: -Style.space(8)
         width: Math.max(1, Style.normalBorderWidth)
         height: Style.space(5)
         color: Util.alpha(Color.menu.text, 0.3)
@@ -146,8 +150,8 @@ Item {
       }
 
       Caption {
-        x: -width / 2
-        y: track.lineY + track.nodeSize - Style.space(4)
+        x: Math.max(-node.x, Math.min(track.width - node.x - width, -width / 2))
+        y: track.tagY
         visible: node.modelData.isDefault || node.modelData.isShift || node.dragging && track.dragRemoving
         color: node.dragging && track.dragRemoving ? Color.urgent : Color.accent
         text: node.dragging && track.dragRemoving
