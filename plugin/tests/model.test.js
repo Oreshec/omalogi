@@ -582,3 +582,14 @@ test("levels stay in order and keep their roles", () => {
   assert.equal(removed.shiftDpi, 800)
   assert.equal(Model.draftProblem(removed), "")
 })
+
+test("gshiftButtons names the buttons that reach the G-Shift layer", () => {
+  const slot = editableSlot()
+  const base = Model.draftFromSlot(slot)
+  const none = { ...base, buttons: base.buttons.map((action) => (action === "gshift" ? "left" : action)) }
+  const holding = (index) => ({ ...none, buttons: none.buttons.map((action, i) => (i === index ? "gshift" : action)) })
+  assert.deepEqual(plain(Model.gshiftButtons(none, 11)), [])
+  assert.deepEqual(plain(Model.gshiftButtons(holding(4), 11)), ["G5"])
+  assert.deepEqual(plain(Model.gshiftButtons(holding(12), 11)), [], "a slot past the physical buttons cannot be pressed")
+  assert.deepEqual(plain(Model.gshiftButtons(null, 11)), [])
+})

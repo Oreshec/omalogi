@@ -205,6 +205,17 @@ function draftProblem(draft) {
   return ""
 }
 
+// The G-numbers of the physical buttons that hold G-Shift on the default layer, e.g.
+// ["G5"]. Without one, the G-Shift layer cannot be reached on the mouse.
+function gshiftButtons(draft, buttonCount) {
+  if (!draft) return []
+  var names = []
+  ;(draft.buttons || []).forEach(function(action, slot) {
+    if (action === "gshift" && slot < buttonCount) names.push(buttonName(slot, true))
+  })
+  return names
+}
+
 // The sensor's DPI range and step, from the list `omalogi info` reports.
 function dpiBounds(info) {
   var values = (info && info.dpi_values) || []

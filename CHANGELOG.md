@@ -20,6 +20,11 @@ All notable changes are listed here. The project follows
 - `scripts/hardware-selftest.py`: a manual self-test that drives every overlay edit on a
   dedicated test profile against a real mouse and checks the memory is byte for byte
   as before.
+- Omalogi's pixel mark, a wired mouse on a 16 × 16 grid, in the overlay header (its
+  wheel rolls while a change is written), the bar indicator (it rolls when the profile
+  changes, and its wheel is lit while a rule chose the profile) and the README.
+- The G-Shift layer names the button that reaches it ("hold G5"), and says so when no
+  button holds G-Shift on the profile. Disabled buttons read quieter than the rest.
 - `omalogi restore <FILE>` writes profile memory back from a backup, with `--dry-run`.
 - `omalogi daemon` switches profiles per app and per monitor from rules in
   `~/.config/omalogi/config.toml`, and publishes its state for the shell plugin.

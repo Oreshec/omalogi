@@ -550,11 +550,24 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacing.lg
 
-            Label {
+            Row {
               anchors.verticalCenter: parent.verticalCenter
-              text: "Omalogi"
-              font.pixelSize: Style.font.heading
-              font.bold: true
+              spacing: Style.spacing.sm
+
+              // The wheel rolls while a change is being written to the mouse.
+              PixelMark {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(32)
+                height: width
+                busy: root.saving || root.undoing
+              }
+
+              Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Omalogi"
+                font.pixelSize: Style.font.heading
+                font.bold: true
+              }
             }
 
             Dropdown {
@@ -568,10 +581,12 @@ Item {
               onChanged: function(value) { root.selectProfile(Number(value)) }
             }
 
+            // The profile list already says which profile is in use, so the button only
+            // shows when there is something to do.
             Button {
               anchors.verticalCenter: parent.verticalCenter
-              visible: root.ready
-              text: root.selected && root.selected.active ? "In use" : "Activate"
+              visible: root.ready && !(root.selected && root.selected.active)
+              text: "Activate"
               bordered: true
               enabled: root.selected !== null && root.selected.enabled && !root.selected.active
               opacity: enabled ? 1 : 0.5
@@ -651,8 +666,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               opacity: 0.5
               text: root.assignments
-                ? "←→ view    g G-Shift    ↑↓ profile    ctrl+z undo    esc close"
-                : "1 assignments    ↑↓ profile    ctrl+z undo    esc close"
+                ? "2 Sensitivity    ←→ view    g G-Shift    ↑↓ profile    ctrl+z undo    esc close"
+                : "1 Assignments    ↑↓ profile    ctrl+z undo    esc close"
               font.pixelSize: Style.font.caption
             }
 
@@ -766,6 +781,8 @@ Item {
                 entries: root.entries
                 entry: root.selectedEntry
                 layerName: root.table === "gshift" ? "G-Shift layer" : "Default layer"
+                gshift: root.table === "gshift"
+                gshiftButtons: Model.gshiftButtons(root.draft, root.buttonCount)
                 dragProxy: dragProxy
                 onChosen: function(action) { root.assign(root.selectedSlot, action) }
                 onShortcutRecorded: function(slot, action) { root.assign(slot, action) }

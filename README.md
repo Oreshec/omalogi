@@ -1,5 +1,7 @@
 # Omalogi
 
+<img src="docs/images/omalogi.svg" alt="The Omalogi pixel mouse, its scroll wheel rolling" width="288">
+
 Configure Logitech G-series mice on [Omarchy](https://omarchy.org): onboard profiles,
 DPI stages, report rate and button bindings, automatic profile switching per app and
 per monitor, and an overlay and bar indicator that follow your Omarchy theme.
@@ -7,7 +9,7 @@ per monitor, and an overlay and bar indicator that follow your Omarchy theme.
 Omalogi talks to the mouse over HID++ 2.0, writes only what you change, backs up the
 mouse's profile memory before every write, and reads every write back to verify it.
 
-![Omalogi editing the G502 X: the mouse with a card per button, and the action picker](docs/images/overlay-buttons.png)
+![Omalogi editing the G502 X: the action library, Front and Side view tiles, and the mouse with a label per button](docs/images/overlay-buttons.png)
 
 ## Supported devices
 

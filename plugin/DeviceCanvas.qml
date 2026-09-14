@@ -104,8 +104,11 @@ Item {
     readonly property bool selected: entry.slot === canvas.selectedSlot
     readonly property bool dropping: drop.containsDrag
     readonly property bool hovered: entry.slot === canvas.hoveredSlot || dropping
+    // A disabled button reads quieter than one that does something.
+    readonly property bool quiet: entry.action === "disabled" && !selected && !hovered && !entry.changed
 
     width: canvas.labelWidth
+    opacity: quiet ? 0.5 : 1
     height: canvas.labelHeight
 
     Column {

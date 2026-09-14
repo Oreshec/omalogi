@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 16" width="384" height="128" shape-rendering="crispEdges" role="img" aria-label="Omalogi">
+<style>
+  .ink { fill: #171A21; }
+  .wheel { fill: #15917F; }
+  @media (prefers-color-scheme: dark) {
+    .ink { fill: #E4E7EC; }
+    .wheel { fill: #3CC7B5; }
+  }
+  .r0 { animation: roll 0.26s step-end infinite; }
+  .r1 { animation: roll 0.26s step-end infinite reverse; }
+  .cable { animation: sway 1.8s step-end infinite; }
+  @keyframes roll { 0% { opacity: 1; } 50% { opacity: 0.35; } }
+  @keyframes sway { 0% { transform: translateX(0); } 50% { transform: translateX(-2px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .r0, .r1, .cable { animation: none; }
+    .r1 { opacity: 0.35; }
+  }
+</style>
+<rect class="ink" x="7" y="1" width="1" height="1"/>
+<rect class="ink" x="7" y="2" width="1" height="1"/>
+<rect class="ink" x="5" y="3" width="1" height="1"/>
+<rect class="ink" x="6" y="3" width="1" height="1"/>
+<rect class="ink" x="7" y="3" width="1" height="1"/>
+<rect class="ink" x="8" y="3" width="1" height="1"/>
+<rect class="ink" x="9" y="3" width="1" height="1"/>
+<rect class="ink" x="4" y="4" width="1" height="1"/>
+<rect class="ink" x="7" y="4" width="1" height="1"/>
+<rect class="ink" x="10" y="4" width="1" height="1"/>
+<rect class="ink" x="3" y="5" width="1" height="1"/>
+<rect class="wheel r1" x="7" y="5" width="1" height="1"/>
+<rect class="ink" x="11" y="5" width="1" height="1"/>
+<rect class="ink" x="3" y="6" width="1" height="1"/>
+<rect class="wheel r0" x="7" y="6" width="1" height="1"/>
+<rect class="ink" x="11" y="6" width="1" height="1"/>
+<rect class="ink" x="3" y="7" width="1" height="1"/>
+<rect class="ink" x="7" y="7" width="1" height="1"/>
+<rect class="ink" x="11" y="7" width="1" height="1"/>
+<rect class="ink" x="3" y="8" width="1" height="1"/>
+<rect class="ink" x="4" y="8" width="1" height="1"/>
+<rect class="ink" x="5" y="8" width="1" height="1"/>
+<rect class="ink" x="6" y="8" width="1" height="1"/>
+<rect class="ink" x="7" y="8" width="1" height="1"/>
+<rect class="ink" x="8" y="8" width="1" height="1"/>
+<rect class="ink" x="9" y="8" width="1" height="1"/>
+<rect class="ink" x="10" y="8" width="1" height="1"/>
+<rect class="ink" x="11" y="8" width="1" height="1"/>
+<rect class="ink" x="3" y="9" width="1" height="1"/>
+<rect class="ink" x="11" y="9" width="1" height="1"/>
+<rect class="ink" x="3" y="10" width="1" height="1"/>
+<rect class="ink" x="11" y="10" width="1" height="1"/>
+<rect class="ink" x="3" y="11" width="1" height="1"/>
+<rect class="ink" x="11" y="11" width="1" height="1"/>
+<rect class="ink" x="3" y="12" width="1" height="1"/>
+<rect class="ink" x="11" y="12" width="1" height="1"/>
+<rect class="ink" x="4" y="13" width="1" height="1"/>
+<rect class="ink" x="10" y="13" width="1" height="1"/>
+<rect class="ink" x="5" y="14" width="1" height="1"/>
+<rect class="ink" x="6" y="14" width="1" height="1"/>
+<rect class="ink" x="7" y="14" width="1" height="1"/>
+<rect class="ink" x="8" y="14" width="1" height="1"/>
+<rect class="ink" x="9" y="14" width="1" height="1"/>
+<rect class="ink cable" x="8" y="0" width="1" height="1"/>
+<rect class="ink" x="19" y="7" width="1" height="1"/>
+<rect class="ink" x="20" y="7" width="1" height="1"/>
+<rect class="ink" x="18" y="8" width="1" height="1"/>
+<rect class="ink" x="21" y="8" width="1" height="1"/>
+<rect class="ink" x="18" y="9" width="1" height="1"/>
+<rect class="ink" x="21" y="9" width="1" height="1"/>
+<rect class="ink" x="18" y="10" width="1" height="1"/>
+<rect class="ink" x="21" y="10" width="1" height="1"/>
+<rect class="ink" x="19" y="11" width="1" height="1"/>
+<rect class="ink" x="20" y="11" width="1" height="1"/>
+<rect class="ink" x="23" y="7" width="1" height="1"/>
+<rect class="ink" x="24" y="7" width="1" height="1"/>
+<rect class="ink" x="26" y="7" width="1" height="1"/>
+<rect class="ink" x="23" y="8" width="1" height="1"/>
+<rect class="ink" x="25" y="8" width="1" height="1"/>
+<rect class="ink" x="27" y="8" width="1" height="1"/>
+<rect class="ink" x="23" y="9" width="1" height="1"/>
+<rect class="ink" x="25" y="9" width="1" height="1"/>
+<rect class="ink" x="27" y="9" width="1" height="1"/>
+<rect class="ink" x="23" y="10" width="1" height="1"/>
+<rect class="ink" x="25" y="10" width="1" height="1"/>
+<rect class="ink" x="27" y="10" width="1" height="1"/>
+<rect class="ink" x="23" y="11" width="1" height="1"/>
+<rect class="ink" x="25" y="11" width="1" height="1"/>
+<rect class="ink" x="27" y="11" width="1" height="1"/>
+<rect class="ink" x="30" y="7" width="1" height="1"/>
+<rect class="ink" x="31" y="7" width="1" height="1"/>
+<rect class="ink" x="32" y="8" width="1" height="1"/>
+<rect class="ink" x="30" y="9" width="1" height="1"/>
+<rect class="ink" x="31" y="9" width="1" height="1"/>
+<rect class="ink" x="32" y="9" width="1" height="1"/>
+<rect class="ink" x="29" y="10" width="1" height="1"/>
+<rect class="ink" x="32" y="10" width="1" height="1"/>
+<rect class="ink" x="30" y="11" width="1" height="1"/>
+<rect class="ink" x="31" y="11" width="1" height="1"/>
+<rect class="ink" x="32" y="11" width="1" height="1"/>
+<rect class="ink" x="34" y="5" width="1" height="1"/>
+<rect class="ink" x="34" y="6" width="1" height="1"/>
+<rect class="ink" x="34" y="7" width="1" height="1"/>
+<rect class="ink" x="34" y="8" width="1" height="1"/>
+<rect class="ink" x="34" y="9" width="1" height="1"/>
+<rect class="ink" x="34" y="10" width="1" height="1"/>
+<rect class="ink" x="35" y="11" width="1" height="1"/>
+<rect class="ink" x="38" y="7" width="1" height="1"/>
+<rect class="ink" x="39" y="7" width="1" height="1"/>
+<rect class="ink" x="37" y="8" width="1" height="1"/>
+<rect class="ink" x="40" y="8" width="1" height="1"/>
+<rect class="ink" x="37" y="9" width="1" height="1"/>
+<rect class="ink" x="40" y="9" width="1" height="1"/>
+<rect class="ink" x="37" y="10" width="1" height="1"/>
+<rect class="ink" x="40" y="10" width="1" height="1"/>
+<rect class="ink" x="38" y="11" width="1" height="1"/>
+<rect class="ink" x="39" y="11" width="1" height="1"/>
+<rect class="ink" x="43" y="7" width="1" height="1"/>
+<rect class="ink" x="44" y="7" width="1" height="1"/>
+<rect class="ink" x="45" y="7" width="1" height="1"/>
+<rect class="ink" x="42" y="8" width="1" height="1"/>
+<rect class="ink" x="45" y="8" width="1" height="1"/>
+<rect class="ink" x="42" y="9" width="1" height="1"/>
+<rect class="ink" x="45" y="9" width="1" height="1"/>
+<rect class="ink" x="42" y="10" width="1" height="1"/>
+<rect class="ink" x="45" y="10" width="1" height="1"/>
+<rect class="ink" x="43" y="11" width="1" height="1"/>
+<rect class="ink" x="44" y="11" width="1" height="1"/>
+<rect class="ink" x="45" y="11" width="1" height="1"/>
+<rect class="ink" x="45" y="12" width="1" height="1"/>
+<rect class="ink" x="43" y="13" width="1" height="1"/>
+<rect class="ink" x="44" y="13" width="1" height="1"/>
+<rect class="ink" x="47" y="5" width="1" height="1"/>
+<rect class="ink" x="47" y="7" width="1" height="1"/>
+<rect class="ink" x="47" y="8" width="1" height="1"/>
+<rect class="ink" x="47" y="9" width="1" height="1"/>
+<rect class="ink" x="47" y="10" width="1" height="1"/>
+<rect class="ink" x="47" y="11" width="1" height="1"/>
+</svg>

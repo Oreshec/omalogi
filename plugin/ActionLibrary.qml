@@ -15,6 +15,10 @@ Item {
   // The selected button's entry, or null.
   property var entry: null
   property string layerName: "Default layer"
+  // Whether the G-Shift layer is shown, and the buttons that reach it, e.g. ["G5"].
+  property bool gshift: false
+  property var gshiftButtons: []
+  readonly property bool unreachable: gshift && gshiftButtons.length === 0
   // The item that follows the pointer while an action is dragged (see Omalogi.qml).
   property Item dragProxy: null
   property string group: "Mouse"
@@ -75,7 +79,9 @@ Item {
       Label {
         width: parent.width
         opacity: 0.6
-        text: library.layerName
+        text: library.gshift && library.gshiftButtons.length > 0
+          ? library.layerName + " · hold " + library.gshiftButtons.join(" or ")
+          : library.layerName
         font.pixelSize: Style.font.caption
       }
     }
@@ -83,10 +89,15 @@ Item {
     Label {
       width: parent.width
       wrapMode: Text.Wrap
-      opacity: 0.7
-      text: library.entry
-        ? "Pick an action for " + library.entry.name + ", or drag one onto any button."
-        : "Drag an action onto a button, or select a button and pick one."
+      opacity: library.unreachable ? 1 : 0.7
+      color: library.unreachable ? Color.accent : Color.menu.text
+      text: {
+        if (library.unreachable)
+          return "No button holds G-Shift on this profile, so these actions can't be used yet. Give a button the G-Shift action on the Default layer first."
+        return library.entry
+          ? "Pick an action for " + library.entry.name + ", or drag one onto any button."
+          : "Drag an action onto a button, or select a button and pick one."
+      }
     }
 
     TextField {

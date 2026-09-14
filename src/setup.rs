@@ -57,6 +57,7 @@ pub const PLUGIN_FILES: &[(&str, &str)] = &[
         "plugin/SensitivityPanel.qml",
         include_str!("../plugin/SensitivityPanel.qml"),
     ),
+    ("plugin/PixelMark.qml", include_str!("../plugin/PixelMark.qml")),
 ];
 
 #[derive(Debug, Clone, Copy)]

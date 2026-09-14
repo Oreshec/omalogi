@@ -44,6 +44,26 @@ Item {
     width: parent.width
     spacing: Style.spacing.xxl
 
+    // The same title block as the Assignments page.
+    Column {
+      width: parent.width
+      spacing: Style.spacing.xxs
+
+      Label {
+        width: parent.width
+        text: "Sensitivity"
+        font.pixelSize: Style.font.heading
+        font.bold: true
+      }
+
+      Label {
+        width: parent.width
+        opacity: 0.6
+        text: panel.stages.length === 1 ? "1 DPI level" : panel.stages.length + " DPI levels"
+        font.pixelSize: Style.font.caption
+      }
+    }
+
     Column {
       width: parent.width
       spacing: Style.spacing.md
