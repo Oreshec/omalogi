@@ -221,6 +221,18 @@ test("stages are capped at five and must not be empty", () => {
   assert.equal(Model.draftProblem(draft), "Add at least one DPI stage.")
 })
 
+test("openRequest reads profile, edit and tab from the payload", () => {
+  assert.equal(Model.openRequest(null), null)
+  assert.equal(Model.openRequest({}), null)
+  assert.equal(Model.openRequest({ profile: 0 }), null)
+  assert.deepEqual(plain(Model.openRequest({ profile: 3, edit: true, tab: "buttons" })), {
+    profile: 3,
+    edit: true,
+    tab: "buttons"
+  })
+  assert.deepEqual(plain(Model.openRequest({ edit: true, tab: "nope" })), { profile: null, edit: true, tab: "dpi" })
+})
+
 test("an unfinished keyboard shortcut blocks writing", () => {
   const draft = Model.setBinding(Model.draftFromSlot(editableSlot()), "gshift", 3, "key:")
   assert.equal(Model.draftProblem(draft), "Type the keyboard shortcut for G-Shift slot 3.")

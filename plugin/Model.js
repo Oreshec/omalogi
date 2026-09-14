@@ -117,6 +117,16 @@ function indicatorTooltip(daemon) {
   return text
 }
 
+// What an open payload asks for, or null. Unknown or malformed fields are ignored.
+function openRequest(payload) {
+  if (!payload || typeof payload !== "object") return null
+  var profile = Number.isInteger(payload.profile) && payload.profile >= 1 ? payload.profile : null
+  var edit = payload.edit === true
+  var tab = ["dpi", "buttons", "gshift"].indexOf(payload.tab) !== -1 ? payload.tab : "dpi"
+  if (profile === null && !edit) return null
+  return { profile: profile, edit: edit, tab: tab }
+}
+
 // ---- Editing ---------------------------------------------------------------
 // A draft is a profile in the terms `omalogi profiles edit` accepts. Drafts are
 // replaced, never mutated, so QML bindings see every change.

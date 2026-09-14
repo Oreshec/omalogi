@@ -37,6 +37,8 @@ Item {
   property bool previewIsError: false
   property bool previewOk: false
   property bool confirmOpen: false
+  // What the open payload asked for, applied once profiles have loaded.
+  property var pendingOpen: null
 
   readonly property var profiles: root.onboard ? root.onboard.profiles : []
   readonly property var selected: root.profiles.length > 0
@@ -59,11 +61,15 @@ Item {
   readonly property int listWidth: Style.space(220)
   readonly property int slotColumnWidth: Style.space(56)
 
+  // payloadJson may name a profile to select and open in the editor, for keybindings:
+  // {"profile": 3, "edit": true, "tab": "buttons"}.
   function open(payloadJson) {
     exitAnimation.stop()
     root.mounted = true
     root.opened = true
     enterAnimation.restart()
+    root.pendingOpen = Model.openRequest(Model.parseJson(payloadJson))
+    if (root.ready && !root.busy) root.applyOpenRequest()
     root.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -79,6 +85,17 @@ Item {
     root.mounted = false
     root.stopEditing()
     if (root.shell && root.manifest) root.shell.hide(root.manifest.id)
+  }
+
+  function applyOpenRequest() {
+    var request = root.pendingOpen
+    if (request === null || !root.ready) return
+    root.pendingOpen = null
+    if (request.profile !== null) root.cursor = Model.clampCursor(request.profile - 1, root.profiles.length)
+    if (request.edit) {
+      root.startEditing()
+      if (root.editing) root.editTab = request.tab
+    }
   }
 
   function refresh() {
@@ -207,6 +224,7 @@ Item {
       var first = root.onboard === null
       root.onboard = parsed
       if (first) root.cursor = Model.initialCursor(parsed)
+      Qt.callLater(root.applyOpenRequest)
     }
   }
 
