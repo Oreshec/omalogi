@@ -20,8 +20,12 @@ All notable changes are listed here. The project follows
 - Omarchy shell plugin: an overlay to view, switch and edit profiles (preview, confirm,
   then a verified write), which can open on a given profile or its editor, and a bar
   indicator for the active profile.
+- `omalogi setup` installs the shell plugin built into the binary, puts the indicator on
+  the bar, enables the daemon and checks device access, for the current user and without
+  root. `--dry-run`, `--no-bar` and `--no-daemon`.
 - udev rule granting the active session access to the G502 X's HID++ interface only.
 - systemd user unit for the daemon.
+- Arch Linux PKGBUILD (`packaging/aur/omalogi`).
 
 ### Supported devices
 

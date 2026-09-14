@@ -64,30 +64,29 @@ install -Dm755 target/release/omalogi ~/.local/bin/omalogi
 ```
 
 **Device access.** Install the udev rule, which gives your login session access to the
-mouse's HID++ interface only, then replug the mouse:
+mouse's HID++ interface only:
 
 ```sh
 sudo install -Dm644 packaging/udev/70-omalogi.rules /usr/lib/udev/rules.d/70-omalogi.rules
 sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=hidraw --action=change
 ```
 
-**Shell plugin.** Omarchy loads third-party plugins from `~/.config/omarchy/plugins`:
+**Set up for your user.** One command, no root:
 
 ```sh
-mkdir -p ~/.config/omarchy/plugins/io.github.elberacasa.omalogi
-cp -r manifest.json plugin ~/.config/omarchy/plugins/io.github.elberacasa.omalogi/
-omarchy-shell shell rescanPlugins
-omarchy bar put io.github.elberacasa.omalogi --section right
+omalogi setup --dry-run   # see what it would change
+omalogi setup
 ```
 
-**Automatic switching** (optional):
+It installs the shell plugin (built into the binary, so it always matches it) into
+`~/.config/omarchy/plugins`, puts the indicator on the right of your bar, enables the
+automatic switching daemon as a systemd user service, and checks that the mouse is
+accessible. It only touches Omalogi's own entries. `--no-bar` and `--no-daemon` skip
+those steps. Run it again after upgrading.
 
-```sh
-install -Dm644 packaging/systemd/omalogi.service ~/.config/systemd/user/omalogi.service
-sed -i 's|/usr/bin/omalogi|%h/.local/bin/omalogi|' ~/.config/systemd/user/omalogi.service
-systemctl --user daemon-reload
-systemctl --user enable --now omalogi.service
-```
+**Arch Linux.** `packaging/aur/omalogi` holds the PKGBUILD, which installs the binary,
+the udev rule and the systemd unit; then run `omalogi setup` as your user.
 
 ## Usage
 

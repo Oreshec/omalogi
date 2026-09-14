@@ -21,6 +21,7 @@ use omalogi::{
         format::Binding,
     },
     rules::Config,
+    setup,
 };
 use serde::Serialize;
 
@@ -46,6 +47,19 @@ enum Command {
         /// Rules file. Defaults to $XDG_CONFIG_HOME/omalogi/config.toml.
         #[arg(long)]
         config: Option<PathBuf>,
+    },
+    /// Set Omalogi up for your user: install the shell plugin, put its indicator on the
+    /// bar, and enable the daemon. Needs no root; run it again after every upgrade.
+    Setup {
+        /// Show what would change, without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Leave the bar as it is.
+        #[arg(long)]
+        no_bar: bool,
+        /// Do not enable the automatic switching daemon.
+        #[arg(long)]
+        no_daemon: bool,
     },
 }
 
@@ -127,6 +141,18 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Actions => print_actions(cli.json),
         Command::Daemon { config } => runtime.block_on(run_daemon(config)),
+        Command::Setup {
+            dry_run,
+            no_bar,
+            no_daemon,
+        } => run_setup(
+            cli.json,
+            setup::Options {
+                dry_run,
+                bar: !no_bar,
+                daemon: !no_daemon,
+            },
+        ),
         Command::Device(command) => runtime.block_on(run_device(cli.json, command)),
     };
     match result {
@@ -149,6 +175,33 @@ fn print_actions(json: bool) -> Result<(), Box<dyn Error>> {
             out
         })
     })?;
+    Ok(())
+}
+
+fn run_setup(json: bool, options: setup::Options) -> Result<(), Box<dyn Error>> {
+    let report = setup::setup(options);
+    output(json, &report, || {
+        let mut out = String::from(if report.dry_run {
+            "Setup (dry run, nothing changed):\n"
+        } else {
+            "Setup:\n"
+        });
+        for step in &report.steps {
+            let status = match step.status {
+                setup::Status::Done => "done",
+                setup::Status::UpToDate => "current",
+                setup::Status::Planned => "planned",
+                setup::Status::Skipped => "skipped",
+                setup::Status::Warning => "warning",
+                setup::Status::Failed => "failed",
+            };
+            out.push_str(&format!("  {status:<8} {:<7} {}\n", step.name, step.detail));
+        }
+        out
+    })?;
+    if report.failed() {
+        return Err("setup did not finish; see the failed step above".into());
+    }
     Ok(())
 }
 

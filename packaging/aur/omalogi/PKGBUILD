@@ -1,0 +1,47 @@
+# Maintainer: elberacasa <https://github.com/elberacasa>
+
+pkgname=omalogi
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Configure Logitech G-series mice on Omarchy: onboard profiles, DPI, buttons, per-app switching'
+arch=('x86_64' 'aarch64')
+url='https://github.com/elberacasa/omalogi'
+license=('MIT OR Apache-2.0')
+depends=('gcc-libs' 'glibc')
+makedepends=('cargo')
+optdepends=(
+  'omarchy: shell plugin and bar indicator'
+  'hyprland: automatic switching per app and monitor'
+)
+install=omalogi.install
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# Filled in by updpkgsums once the v$pkgver tag is published.
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/omalogi "$pkgdir/usr/bin/omalogi"
+  install -Dm644 packaging/systemd/omalogi.service "$pkgdir/usr/lib/systemd/user/omalogi.service"
+  install -Dm644 packaging/udev/70-omalogi.rules "$pkgdir/usr/lib/udev/rules.d/70-omalogi.rules"
+  install -Dm644 LICENSE-MIT LICENSE-APACHE -t "$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 README.md CHANGELOG.md -t "$pkgdir/usr/share/doc/$pkgname"
+}

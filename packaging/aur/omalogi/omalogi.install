@@ -1,0 +1,17 @@
+# Apply the udev rule to a mouse that is already plugged in. pacman's own udev hook
+# reloads rules only after the transaction, so reload here before triggering.
+apply_udev_rule() {
+  udevadm control --reload-rules >/dev/null 2>&1 || true
+  udevadm trigger --subsystem-match=hidraw --action=change >/dev/null 2>&1 || true
+}
+
+post_install() {
+  apply_udev_rule
+  echo '==> Run `omalogi setup` as your user (not root) to add the shell plugin,'
+  echo '    the bar indicator and the automatic switching daemon.'
+}
+
+post_upgrade() {
+  apply_udev_rule
+  echo '==> Run `omalogi setup` as your user to update the shell plugin and restart the daemon.'
+}

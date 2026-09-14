@@ -37,8 +37,9 @@ pub enum HidrawError {
     #[error("no supported Logitech device found; is the G502 X (046d:c099) plugged in over USB?")]
     NotFound,
     #[error(
-        "permission denied opening {path}; install OpenLogi's udev rule \
-         (70-openlogi.rules), or for this session run: sudo setfacl -m u:$USER:rw {path}"
+        "permission denied opening {path}; install Omalogi's udev rule \
+         (packaging/udev/70-omalogi.rules) and replug the mouse, \
+         or for this session run: sudo setfacl -m u:$USER:rw {path}"
     )]
     PermissionDenied { path: String },
     #[error("could not access {path}")]
