@@ -14,6 +14,10 @@
 # Logitech G502 X, wired (046d:c099): HID++ on USB interface 1. Verified.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c099", ENV{ID_USB_INTERFACE_NUM}=="01", TAG+="uaccess"
 
+# Logitech Unifying, Nano, LIGHTSPEED and Bolt receivers, for wireless mice behind them
+# (receiver ids from OpenLogi's device registry).
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c52b|c532|c537|c539|c53f|c547|c548|c54d", TAG+="uaccess"
+
 # Untested wired G-series mice with onboard profiles (USB ids from libratbag). Their
 # HID++ interface number is not verified, so every hidraw node of these mice is matched,
 # as Solaar's and libratbag's rules do; Omalogi itself only opens the HID++ interface.

@@ -20,6 +20,11 @@ All notable changes are listed here. The project follows
   acceptance per model and layout (`omalogi accept-untested`, or the overlay), and
   every write is still backed up and verified; `omalogi serve` reports the mouse's
   `support`. The udev rule covers the new models.
+- Wireless mice: 16 untested wireless G-series models are found and edited through
+  LIGHTSPEED, Bolt and Unifying receivers, using OpenLogi's device layer
+  (`openlogi-hid`, `openlogi-core`) for receivers, inventory and routing. A mouse on a
+  cable is used first; the udev rule covers the receivers. `omalogi picture` works for
+  wireless mice too.
 - `AGENTS.md` and task prompts in `docs/agents/` so contributors can work with the coding
   agent of their choice under the same rules.
 

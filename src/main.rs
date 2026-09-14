@@ -15,7 +15,7 @@ use omalogi::{
     device::{CLI_SOFTWARE_ID, Session},
     editing::{BackupFile, ProfileChanges, save_backup},
     error_chain,
-    hidraw::find_supported,
+    hidraw::{HidrawError, find_supported},
     lock::DeviceLock,
     onboard::{
         action::{catalog, parse_action},
@@ -185,7 +185,7 @@ fn main() -> ExitCode {
         Command::Daemon { config } => runtime.block_on(run_daemon(config)),
         Command::Serve => runtime.block_on(run_serve()),
         Command::Picture { offline, refresh } => {
-            show_picture(cli.json, assets::Options { offline, refresh })
+            runtime.block_on(show_picture(cli.json, assets::Options { offline, refresh }))
         }
         Command::Setup {
             dry_run,
@@ -224,11 +224,21 @@ fn print_actions(json: bool) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn show_picture(json: bool, options: assets::Options) -> Result<(), Box<dyn Error>> {
-    let node = find_supported()?;
-    let picture = assets::picture(node.device.product_id, options)?;
+async fn show_picture(json: bool, options: assets::Options) -> Result<(), Box<dyn Error>> {
+    let model = match find_supported() {
+        Ok(node) => node.device,
+        // No wired mouse: a known mouse behind a receiver, found through OpenLogi.
+        Err(HidrawError::NotFound) => omalogi::wireless::find()
+            .await?
+            .into_iter()
+            .next()
+            .map(|mouse| mouse.model)
+            .ok_or(HidrawError::NotFound)?,
+        Err(error) => return Err(error.into()),
+    };
+    let picture = assets::picture(model.product_id, options)?;
     output(json, &picture, || {
-        let mut out = format!("{} picture ({}):\n", node.device.name, picture.depot);
+        let mut out = format!("{} picture ({}):\n", model.name, picture.depot);
         for view in &picture.views {
             out.push_str(&format!(
                 "  {:<5}  {}  ({} button positions)\n",

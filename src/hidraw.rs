@@ -78,11 +78,33 @@ pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[
     untested(0xC332, "G502 Proteus Spectrum"),
 ];
 
+/// Wireless G-series mice with onboard profiles, by the wireless product id (WPID) their
+/// receiver reports, from libratbag's device database. All untested; they are reached
+/// through OpenLogi's receiver support (see [`crate::wireless`]).
+pub const WIRELESS_DEVICES: &[SupportedDevice] = &[
+    untested(0x402C, "G602"),
+    untested(0x4053, "G900"),
+    untested(0x405D, "G403 Wireless"),
+    untested(0x4067, "G903"),
+    untested(0x406C, "G603"),
+    untested(0x4070, "G703"),
+    untested(0x4074, "G305"),
+    untested(0x4079, "G Pro Wireless"),
+    untested(0x407F, "G502 Hero Wireless"),
+    untested(0x4085, "G604"),
+    untested(0x4086, "G703 Hero"),
+    untested(0x4087, "G903 Hero"),
+    untested(0x4093, "G Pro X Superlight"),
+    untested(0x4099, "G502 X Plus"),
+    untested(0x409D, "G705"),
+    untested(0x409F, "G502 X Lightspeed"),
+];
+
 #[derive(Debug, Error)]
 pub enum HidrawError {
     #[error(
-        "no supported Logitech mouse found; plug a G-series mouse in over USB \
-         (wireless receivers are not supported yet)"
+        "no supported Logitech mouse found; plug a G-series mouse in over USB, \
+         or turn on a wireless one paired to its receiver"
     )]
     NotFound,
     #[error(
@@ -410,5 +432,19 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), SUPPORTED_DEVICES.len());
+    }
+
+    #[test]
+    fn wireless_ids_are_unique_untested_and_not_usb_ids() {
+        let mut ids: Vec<u16> = WIRELESS_DEVICES.iter().map(|d| d.product_id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), WIRELESS_DEVICES.len());
+        assert!(WIRELESS_DEVICES.iter().all(|d| !d.verified));
+        assert!(WIRELESS_DEVICES.iter().all(|w| {
+            SUPPORTED_DEVICES
+                .iter()
+                .all(|d| d.product_id != w.product_id)
+        }));
     }
 }

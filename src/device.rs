@@ -55,6 +55,8 @@ pub enum SessionError {
     },
     #[error("HID++ software id {0} is outside 1..=15")]
     InvalidSoftwareId(u8),
+    #[error(transparent)]
+    Wireless(#[from] crate::wireless::WirelessError),
     #[error("the device did not answer as a HID++ 2.0 device")]
     Device(#[from] DeviceError),
     #[error("the device does not report the {0} feature")]
@@ -171,11 +173,24 @@ impl Session {
     ///
     /// `software_id` is [`CLI_SOFTWARE_ID`] or [`DAEMON_SOFTWARE_ID`].
     pub async fn open(software_id: u8) -> Result<Self, SessionError> {
-        let node = hidraw::find_supported()?;
-        let path = node.path.display().to_string();
-        let model = node.device;
-        let raw = HidrawChannel::open(node)?;
-        let mut session = Self::connect(raw, model, path, software_id).await?;
+        let mut session = match hidraw::find_supported() {
+            Ok(node) => {
+                let path = node.path.display().to_string();
+                let model = node.device;
+                let raw = HidrawChannel::open(node)?;
+                Self::connect(raw, model, path, software_id).await?
+            }
+            // No wired mouse: look behind receivers, through OpenLogi's device layer. Its
+            // channels lease their own software id; the device lock keeps processes apart.
+            Err(HidrawError::NotFound) => match crate::wireless::open().await? {
+                Some((mouse, channel)) => {
+                    let index = mouse.route.device_index();
+                    Self::on_channel(channel, index, mouse.model, mouse.path).await?
+                }
+                None => return Err(HidrawError::NotFound.into()),
+            },
+            Err(error) => return Err(error.into()),
+        };
         session.consent = crate::consent::default_path();
         Ok(session)
     }
@@ -196,6 +211,18 @@ impl Session {
         path: String,
         software_id: u8,
     ) -> Result<Self, SessionError> {
+        Self::connect_at(raw, model, path, software_id, DIRECT_DEVICE_INDEX).await
+    }
+
+    /// [`Session::connect`] to the device at `device_index` on the transport, such as a
+    /// mouse at its slot behind a receiver.
+    pub async fn connect_at(
+        raw: impl RawHidChannel,
+        model: SupportedDevice,
+        path: String,
+        software_id: u8,
+        device_index: u8,
+    ) -> Result<Self, SessionError> {
         let id = (software_id <= 0x0F)
             .then(|| RequestSwId::new(U4::from_lo(software_id)))
             .flatten()
@@ -207,7 +234,17 @@ impl Session {
                 source,
             })?;
         chan.set_sw_id_policy(SwIdPolicy::Fixed(id));
-        let device = Device::new(Arc::new(chan), DIRECT_DEVICE_INDEX).await?;
+        Self::on_channel(Arc::new(chan), device_index, model, path).await
+    }
+
+    /// A session with the device at `device_index` on an open HID++ channel.
+    async fn on_channel(
+        chan: Arc<HidppChannel>,
+        device_index: u8,
+        model: SupportedDevice,
+        path: String,
+    ) -> Result<Self, SessionError> {
+        let device = Device::new(chan, device_index).await?;
         Ok(Self {
             device,
             model,

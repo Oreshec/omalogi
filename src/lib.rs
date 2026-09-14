@@ -12,6 +12,7 @@ pub mod onboard;
 pub mod rules;
 pub mod serve;
 pub mod setup;
+pub mod wireless;
 
 /// An error and its causes on one line: `outer: cause: root cause`.
 #[must_use]

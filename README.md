@@ -33,8 +33,19 @@ G402 (c07e), G403 (c083), G403 Hero (c08f), G403 Wireless (c082), G502 Hero (c08
 G502 Hero Wireless (c08d), G502 Proteus Core (c07d), G502 Proteus Spectrum (c332),
 G502 X Lightspeed (c098), G502 X Plus (c095), G703 (c087), G703 Hero (c090), G705 (c096),
 G900 (c081), G903 (c086), G903 Hero (c091), G Pro (c085, c08c), G Pro Wireless (c088),
-G Pro X Superlight (c094), MX518 (c08e). Wireless models are listed with their USB id
-for a cable connection; receivers are not supported yet.
+G Pro X Superlight (c094), MX518 (c08e). Wireless models are listed here with their USB id
+for a cable connection.
+
+</details>
+
+<details>
+<summary>Untested wireless models, through a LIGHTSPEED, Bolt or Unifying receiver</summary>
+
+G305, G403 Wireless, G502 Hero Wireless, G502 X Lightspeed, G502 X Plus, G602, G603,
+G604, G703, G703 Hero, G705, G900, G903, G903 Hero, G Pro Wireless, G Pro X Superlight.
+Omalogi finds them with [OpenLogi](https://github.com/AprilNEA/OpenLogi)'s device layer,
+which handles the receivers, and edits them the same way as a wired mouse. A mouse
+plugged in with its cable is used first.
 
 </details>
 
