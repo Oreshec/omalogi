@@ -221,6 +221,58 @@ test("stages are capped at five and must not be empty", () => {
   assert.equal(Model.draftProblem(draft), "Add at least one DPI stage.")
 })
 
+test("an unfinished keyboard shortcut blocks writing", () => {
+  const draft = Model.setBinding(Model.draftFromSlot(editableSlot()), "gshift", 3, "key:")
+  assert.equal(Model.draftProblem(draft), "Type the keyboard shortcut for G-Shift slot 3.")
+})
+
+test("dpi bounds and new stages come from the sensor list", () => {
+  const info = { dpi_values: [100, 150, 200, 25600] }
+  assert.deepEqual(plain(Model.dpiBounds(info)), { min: 100, max: 25600, step: 50 })
+  assert.deepEqual(plain(Model.dpiBounds(null)), { min: 100, max: 25600, step: 50 })
+  const bounds = Model.dpiBounds(info)
+  const draft = Model.draftFromSlot(editableSlot())
+  assert.equal(Model.nextStageDpi(draft, bounds), 6400)
+  assert.equal(Model.nextStageDpi(Model.setStage(draft, 4, 20000), bounds), 25600)
+})
+
+test("dropdown options for stages and rates", () => {
+  const draft = Model.draftFromSlot(editableSlot())
+  assert.deepEqual(plain(Model.stageOptions(draft))[0], { value: "800", label: "800 DPI" })
+  assert.deepEqual(plain(Model.rateOptions({ report_rates_hz: [125, 1000] })), [
+    { value: "125", label: "125 Hz" },
+    { value: "1000", label: "1000 Hz" }
+  ])
+})
+
+test("editable slots are physical buttons plus bound extras", () => {
+  const original = Model.draftFromSlot(editableSlot())
+  // button_count 6: slots 0-5, plus slot 6 which is bound to scroll-left.
+  assert.deepEqual(plain(Model.editableSlots(original, "buttons", 6)), [0, 1, 2, 3, 4, 5, 6])
+  assert.deepEqual(plain(Model.editableSlots(original, "gshift", 2)), [0, 1, 2])
+})
+
+test("action picker groups key combos and keeps unknown current bindings", () => {
+  const catalog = [
+    { value: "back", label: "back", group: "Mouse" },
+    { value: "key:", label: "Keyboard shortcut…", group: "Keyboard" }
+  ]
+  assert.equal(Model.actionChoice("key:ctrl+t"), "key:")
+  assert.equal(Model.keyCombo("key:ctrl+t"), "ctrl+t")
+  assert.equal(Model.keyCombo("back"), "")
+  assert.equal(plain(Model.actionOptions(catalog, "key:ctrl+t")).length, 2)
+  assert.deepEqual(plain(Model.actionOptions(catalog, "button:7"))[0], {
+    value: "button:7",
+    label: "button:7",
+    description: "Current"
+  })
+  assert.deepEqual(plain(Model.actionOptions(catalog, "back"))[0], {
+    value: "back",
+    label: "back",
+    description: "Mouse"
+  })
+})
+
 test("boundSlots keeps slot numbers of bound buttons", () => {
   const slots = JSON.parse(JSON.stringify(Model.boundSlots(["left click", null, "DPI up"])))
   assert.deepEqual(slots, [

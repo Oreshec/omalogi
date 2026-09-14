@@ -194,7 +194,70 @@ function draftProblem(draft) {
   if (draft.dpiStages.length === 0) return "Add at least one DPI stage."
   if (draft.defaultDpi === null || draft.dpiStages.indexOf(draft.defaultDpi) === -1) return "Choose the default DPI stage."
   if (draft.shiftDpi === null || draft.dpiStages.indexOf(draft.shiftDpi) === -1) return "Choose the DPI shift stage."
+  var tables = [["buttons", "Button"], ["gshift", "G-Shift"]]
+  for (var t = 0; t < tables.length; t++) {
+    var slots = draft[tables[t][0]]
+    for (var slot = 0; slot < slots.length; slot++) {
+      if (slots[slot] === "key:") return "Type the keyboard shortcut for " + tables[t][1] + " slot " + slot + "."
+    }
+  }
   return ""
+}
+
+// The sensor's DPI range and step, from the list `omalogi info` reports.
+function dpiBounds(info) {
+  var values = (info && info.dpi_values) || []
+  if (values.length === 0) return { min: 100, max: 25600, step: 50 }
+  var step = values.length > 1 ? values[1] - values[0] : 50
+  return { min: values[0], max: values[values.length - 1], step: step }
+}
+
+// A sensible DPI for a new stage: double the highest stage, within the sensor's range.
+function nextStageDpi(draft, bounds) {
+  var highest = draft.dpiStages.length > 0 ? Math.max.apply(null, draft.dpiStages) : bounds.min
+  var doubled = Math.round((highest * 2) / bounds.step) * bounds.step
+  return Math.max(bounds.min, Math.min(bounds.max, doubled))
+}
+
+function stageOptions(draft) {
+  return draft.dpiStages.map(function(dpi) { return { value: String(dpi), label: dpi + " DPI" } })
+}
+
+function rateOptions(info) {
+  return ((info && info.report_rates_hz) || []).map(function(hz) { return { value: String(hz), label: hz + " Hz" } })
+}
+
+// Slots that are physical buttons, plus slots the profile already binds (the wheel).
+function editableSlots(original, table, buttonCount) {
+  var slots = []
+  original[table].forEach(function(action, slot) {
+    if (slot < buttonCount || (action !== null && action !== "disabled")) slots.push(slot)
+  })
+  return slots
+}
+
+function isKeyAction(action) {
+  return typeof action === "string" && action.indexOf("key:") === 0
+}
+
+function keyCombo(action) {
+  return isKeyAction(action) ? action.slice(4) : ""
+}
+
+// The picker entry for a binding: key combos all live under "Keyboard shortcut…".
+function actionChoice(action) {
+  return isKeyAction(action) ? "key:" : (action || "")
+}
+
+// Picker options from `omalogi actions`, plus the current binding when the list lacks it.
+function actionOptions(catalog, current) {
+  var options = (catalog || []).map(function(action) {
+    return { value: action.value, label: action.label, description: action.group }
+  })
+  var choice = actionChoice(current)
+  var known = options.some(function(option) { return option.value === choice })
+  if (choice !== "" && !known) options.unshift({ value: choice, label: choice, description: "Current" })
+  return options
 }
 
 // Arguments for `omalogi profiles edit`, covering only what differs from `original`.
