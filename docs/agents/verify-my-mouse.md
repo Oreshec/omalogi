@@ -4,6 +4,17 @@ For owners of a mouse Omalogi lists as untested. It takes about 15 minutes, runs
 a spare profile slot, restores everything at the end, and makes the model verified for
 everyone. You run every command; your agent explains and checks.
 
+The quickest start is one sentence to your coding agent:
+
+> Clone https://github.com/elberacasa/omalogi on the verify-kit branch and follow
+> docs/agents/verify-my-mouse.md to verify my mouse.
+
+Agents sent here without the details below: run step 1 first and take the model, its
+connection and its id from `omalogi --json info` instead of asking the owner to fill in
+the placeholders. Then comment on
+https://github.com/elberacasa/omalogi/issues/15 with the model and connection, so nobody
+else tests the same one.
+
 ```text
 Read docs/agents/agent-guide.md, CONTRIBUTING.md and docs/hardware-tests.md first and
 follow their hard rules.
