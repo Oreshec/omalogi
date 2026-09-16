@@ -1,7 +1,7 @@
 # Prompt: test on real hardware
 
 ```text
-Read AGENTS.md and docs/hardware-tests.md first and follow their rules.
+Read docs/agents/agent-guide.md and docs/hardware-tests.md first and follow their rules.
 
 The change to verify: <branch or pull request, and what it changes on the mouse>.
 My mouse: <model, USB id, firmware from `omalogi --json info`>.

@@ -3,6 +3,9 @@
 Thanks for helping. Omalogi writes to people's hardware, so the bar is correctness first:
 nothing about a device is assumed, and every claim about a device is verified on one.
 
+Working with a coding agent? Point it at [docs/agents/agent-guide.md](docs/agents/agent-guide.md)
+and the task prompts beside it; the rules there are these rules.
+
 ## Development loop
 
 ```sh

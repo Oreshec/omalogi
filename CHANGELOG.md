@@ -27,7 +27,7 @@ All notable changes are listed here. The project follows
   (`openlogi-hid`, `openlogi-core`) for receivers, inventory and routing. A mouse on a
   cable is used first; the udev rule covers the receivers. `omalogi picture` works for
   wireless mice too.
-- `AGENTS.md` and task prompts in `docs/agents/` so contributors can work with the coding
+- `docs/agents/agent-guide.md` and task prompts in `docs/agents/` so contributors can work with the coding
   agent of their choice under the same rules.
 
 ### Changed

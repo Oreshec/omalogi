@@ -1,7 +1,7 @@
 # Prompt: add a device
 
 ```text
-Read AGENTS.md and CONTRIBUTING.md ("Adding a device") first and follow their rules.
+Read docs/agents/agent-guide.md and CONTRIBUTING.md ("Adding a device") first and follow their rules.
 
 I own a <model, e.g. Logitech G305> (USB id <046d:xxxx>, connected <wired / LIGHTSPEED
 receiver>) and want Omalogi to support it.
@@ -19,7 +19,7 @@ receiver>) and want Omalogi to support it.
    the layout is new and verified) and the udev rule.
 5. Give me the dry-run, backup, write and restore commands for one hardware write, wait
    for my results, and log them in docs/hardware-tests.md.
-6. Run every check in AGENTS.md, then list the device as tested in the README.
+6. Run every check in docs/agents/agent-guide.md, then list the device as tested in the README.
 
 Never commit the raw dump, never flash firmware, never write ROM sectors. If something
 cannot be verified, stop and tell me what is missing.

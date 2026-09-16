@@ -2,7 +2,7 @@
 
 Omalogi is built agent first. Open the agent you prefer in a clone of this repository,
 paste one of these prompts, and fill in the parts in angle brackets. Every prompt starts
-from [AGENTS.md](../../AGENTS.md), which holds the project map, the checks and the hard
+from [agent-guide.md](agent-guide.md), which holds the project map, the checks and the hard
 rules, so any model works the same way.
 
 | Prompt | Use it to |

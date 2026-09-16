@@ -2,12 +2,17 @@
 
 This file is for any coding agent (Codex, Claude Code, Cursor, Copilot, Gemini CLI,
 opencode, …) working in this repository. Humans should read
-[CONTRIBUTING.md](CONTRIBUTING.md); the rules are the same.
+[CONTRIBUTING.md](../../CONTRIBUTING.md); the rules are the same.
+
+It lives here rather than in the repository root, and is named so no agent loads it by
+itself: `omarchy plugin add` clones this repository into the user's plugins folder, and a
+published plugin must carry no instructions an agent could pick up on its own. Point your
+agent at this file yourself.
 
 Omalogi configures Logitech G-series mice on [Omarchy](https://omarchy.org). It is built
 in Omarchy, for Omarchy: an omarchy-shell plugin (QML) in front of a Rust helper that
 speaks HID++ 2.0 to the mouse. Ready-made task prompts are in
-[docs/agents/](docs/agents/README.md).
+[docs/agents/](README.md).
 
 ## Map
 
