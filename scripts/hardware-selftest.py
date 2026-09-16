@@ -88,6 +88,19 @@ def cli(binary, *args):
     return json.loads(run.stdout)
 
 
+def live_dpi(binary, attempts=3):
+    """The sensor's live DPI. Right after loading a profile the mouse can miss one request
+    (a USB timeout, seen once on a G502 X), so a read is tried again briefly before it
+    counts as a failure. Only reads are retried; writes never are."""
+    for attempt in range(attempts):
+        try:
+            return cli(binary, "dpi")["dpi"]
+        except RuntimeError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.5)
+
+
 def rate_hz(profile):
     return round(1000 / profile["report_rate_ms"])
 
@@ -233,8 +246,7 @@ def run(serve, binary, number, report):
     # 3. DPI stage lists, default and shift stages, and every report rate.
     print("[3/6] sensitivity: DPI stages, default and shift stages, report rates", flush=True)
     info_rates = state_info_rates(serve)
-    lists = [[400], [800, 1600], [400, 800, 1600], [800, 1200, 1600, 3200],
-             [100, 400, 1600, 6400, 25600], [850, 25600]]
+    lists = dpi_cases(serve.result("state")["info"]["dpi_values"])
     case = 0
     for stages in lists:
         for default in stages if len(stages) <= 3 else [stages[0], stages[-1]]:
@@ -301,13 +313,13 @@ def run(serve, binary, number, report):
     default = stages[snapshot["default_dpi_index"]]
     serve.result("activate", profile=number)
     report.check("activation", serve.result("state")["onboard"]["active_position"] == position)
-    report.check("live DPI after activating", cli(binary, "dpi")["dpi"] == default)
+    report.check("live DPI after activating", live_dpi(binary) == default)
 
     other_dpi = next(dpi for dpi in stages if dpi != default)
     other_rate = 500 if rate_hz(snapshot) != 500 else 1000
     for changes, name, live in [
         ({"default_dpi": other_dpi}, f"default DPI {other_dpi}",
-         lambda: cli(binary, "dpi")["dpi"] == other_dpi),
+         lambda: live_dpi(binary) == other_dpi),
         ({"rate": other_rate}, f"report rate {other_rate} Hz",
          lambda: serve.result("state")["info"]["report_rate_hz"] == other_rate),
         ({"buttons": {"10": "key:f13"}}, "DPI down as F13", lambda: True),
@@ -320,7 +332,7 @@ def run(serve, binary, number, report):
     for _ in range(3):
         state = (serve.result("undo")["takes_effect"] or {}).get("state")
         report.check("undo in use is loaded right away", state == "now", state)
-    report.check("live DPI after undo", cli(binary, "dpi")["dpi"] == default)
+    report.check("live DPI after undo", live_dpi(binary) == default)
     report.check("report rate after undo",
                  serve.result("state")["info"]["report_rate_hz"] == rate_hz(snapshot))
 
@@ -336,9 +348,23 @@ def run(serve, binary, number, report):
 
     serve.result("activate", profile=home)
     home_default = home_profile["dpi_stages"][home_profile["default_dpi_index"]]
-    report.check("live DPI back on the home profile", cli(binary, "dpi")["dpi"] == home_default)
+    report.check("live DPI back on the home profile", live_dpi(binary) == home_default)
     return home
 
+
+
+def dpi_cases(values):
+    """Stage lists this sensor supports: one to four common levels, its whole range, and
+    an in-between step with its maximum. On a G502 X (100-25600 in steps of 50) these are
+    the lists the self-test always used."""
+    values = sorted(set(values))
+    near = lambda target: min(values, key=lambda dpi: abs(dpi - target))
+    common = sorted({near(target) for target in (400, 800, 1200, 1600, 3200, 6400)})
+    lo, hi = values[0], values[-1]
+    whole_range = sorted({lo, near(400), near(1600), near(6400), hi})[:5]
+    in_between = sorted({values[min(len(values) - 1, 15)], hi})
+    cases = [common[:1], common[:2], common[:3], common[:4], whole_range, in_between]
+    return [case for case in cases if case]
 
 def state_info_rates(serve):
     return serve.result("state")["info"]["report_rates_hz"]

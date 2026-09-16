@@ -226,6 +226,13 @@ Result: **pass**.
 
 ## Observations
 
+- 2026-09-16: during the in-use phase of the self-test, one `omalogi dpi` read right after
+  a profile reload failed with `ETIMEDOUT` (os error 110) on the G502 X. The run stopped,
+  its automatic restore put all profile memory back byte for byte (confirmed with a fresh
+  backup), and the daemon logged nothing. The self-test now retries live-DPI reads twice,
+  0.5 s apart, and picks its DPI cases from each sensor's own supported values; the next
+  full run passed.
+
 - 2026-09-13 20:00:34: one daemon poll failed with `ETIMEDOUT` (os error 110) from the
   hidraw write, with no other Omalogi traffic; the daemon reconnected at once. USB
   autosuspend is off for the mouse (`power/control` = `on`, never suspended). Cause

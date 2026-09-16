@@ -7,6 +7,7 @@ rules, so any model works the same way.
 
 | Prompt | Use it to |
 |---|---|
+| [verify-my-mouse.md](verify-my-mouse.md) | Verify a mouse Omalogi lists as untested, and mark it verified |
 | [add-a-device.md](add-a-device.md) | Add support for another Logitech mouse you own |
 | [fix-a-bug.md](fix-a-bug.md) | Fix a reported bug, test first |
 | [improve-the-overlay.md](improve-the-overlay.md) | Change or polish the Omarchy overlay or bar widget |
