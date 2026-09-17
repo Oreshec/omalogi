@@ -15,6 +15,7 @@ set -euo pipefail
 VERSION=${OMALOGI_VERSION:-latest}
 BIN_DIR=${OMALOGI_BIN_DIR:-$HOME/.local/bin}
 RULE=/etc/udev/rules.d/70-omalogi.rules
+PACKAGED_RULE=/usr/lib/udev/rules.d/70-omalogi.rules
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 die() { printf 'omalogi install: %s\n' "$*" >&2; exit 1; }
@@ -48,11 +49,21 @@ tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
 install -Dm755 "$tmp/$name/omalogi" "$BIN_DIR/omalogi"
 say "Installed $("$BIN_DIR/omalogi" --version) to $BIN_DIR"
 
-if [ -f /usr/lib/udev/rules.d/70-omalogi.rules ]; then
-  say "The udev rule is already installed by a package"
-elif ! cmp -s "$tmp/$name/70-omalogi.rules" "$RULE"; then
-  say "Installing the udev rule, so your user can reach the mouse without root (sudo)"
-  sudo install -Dm644 "$tmp/$name/70-omalogi.rules" "$RULE"
+# A rule in /etc/udev/rules.d takes precedence over one of the same name in /usr/lib, so
+# a current copy in /etc is enough; one in /usr/lib (from a package) is only trusted
+# while it matches this release, since older rules miss newer mice and receivers.
+rule="$tmp/$name/70-omalogi.rules"
+if cmp -s "$rule" "$RULE"; then
+  say "The udev rule is up to date"
+elif [ ! -f "$RULE" ] && cmp -s "$rule" "$PACKAGED_RULE"; then
+  say "The udev rule is up to date (installed by a package)"
+else
+  if [ -f "$RULE" ] || [ -f "$PACKAGED_RULE" ]; then
+    say "Updating the udev rule, which covers more mice in this release (sudo)"
+  else
+    say "Installing the udev rule, so your user can reach the mouse without root (sudo)"
+  fi
+  sudo install -Dm644 "$rule" "$RULE"
   sudo udevadm control --reload-rules
   sudo udevadm trigger --subsystem-match=hidraw --action=change
 fi
