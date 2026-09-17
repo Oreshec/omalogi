@@ -99,4 +99,8 @@ else
   say "Omarchy was not found, so the shell plugin was skipped; run \`omalogi setup\` once it is installed"
 fi
 
-say "Done. With the mouse plugged in, \`omalogi info\` shows it."
+if [ -d "$HOME/.config/omarchy" ] || command -v omarchy-shell >/dev/null 2>&1; then
+  say "Done. Open Omalogi from the bar or the Omarchy menu to set up your mouse."
+else
+  say "Done. With the mouse plugged in, \`omalogi info\` shows it."
+fi

@@ -363,9 +363,12 @@ Item {
 
   // Runs the plugin's own installer in Omarchy's floating terminal, as the bar's update
   // button runs omarchy-update, so the password prompt and progress stay in plain sight.
+  // The overlay closes first: it covers the whole screen, above any window, so the
+  // terminal would open out of sight. Opening Omalogi again reads the mouse afresh.
   function installHelper() {
+    server.stop()
     Util.execArgv(Model.helperInstallArgv(root.installScript))
-    root.say("Finish the installer in the terminal, then choose Try again.", false)
+    root.close()
   }
 
   // The setup card's one step: repairing the profile list happens here, everything else
@@ -1013,7 +1016,7 @@ Item {
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.WrapAnywhere
               opacity: 0.45
-              text: "Opens a terminal and runs  " + Model.helperInstallCommand(root.installScript)
+              text: "Omalogi closes and a terminal runs  " + Model.helperInstallCommand(root.installScript) + "  Open Omalogi again when it is done."
               font.pixelSize: Style.font.caption
             }
           }
