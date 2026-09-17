@@ -40,8 +40,15 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 say "Downloading $name.tar.gz"
-curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -o "$tmp/$name.tar.gz" "$base/$name.tar.gz"
-curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -o "$tmp/$name.tar.gz.sha256" "$base/$name.tar.gz.sha256"
+# A stalled download host otherwise hangs the installer for good: give up on a connection
+# after 15 s and a transfer after 5 minutes, and retry either (the binary is ~3 MB).
+fetch() {
+  curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 300 \
+    --retry 3 --retry-delay 2 --retry-all-errors -o "$1" "$2" \
+    || die "could not download $2; check your connection and try again"
+}
+fetch "$tmp/$name.tar.gz" "$base/$name.tar.gz"
+fetch "$tmp/$name.tar.gz.sha256" "$base/$name.tar.gz.sha256"
 (cd "$tmp" && sha256sum --check --status "$name.tar.gz.sha256") \
   || die "the download does not match its checksum; nothing was installed"
 tar -xzf "$tmp/$name.tar.gz" -C "$tmp"

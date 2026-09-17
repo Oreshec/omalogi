@@ -5,6 +5,12 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Fixed
+
+- `install.sh` no longer hangs when GitHub's download host stalls: each download gives
+  up on a connection after 15 seconds and on a transfer after 5 minutes, retries, and
+  says what failed.
+
 ## [0.3.1] - 2026-09-17
 
 ### Added
