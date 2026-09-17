@@ -17,6 +17,11 @@ All notable changes are listed here. The project follows
   its author as the claim on the model, `/claim` and `/unclaim` take and return a claim
   on an existing issue, and a second report for the same model is pointed at the first.
   The overlay's **Help verify it** opens the form filled in.
+- `uninstall.sh` reverses the installer: it stops the daemon and removes its unit, the
+  helper, the udev rule and the plugin, after showing the plan and asking. `--dry-run`
+  shows the plan only. Backups, rules and the mouse's profiles are kept.
+- `docs/agents/verify-my-mouse.md`: a prompt that walks an owner and their coding agent
+  through claiming a model, the self-test and the pull request that marks it verified.
 
 ### Fixed
 
@@ -24,6 +29,11 @@ All notable changes are listed here. The project follows
   such sectors as read and flags them, and `restore` works past them. The error says the
   profiles may be intact and names the repair, instead of blaming a mouse that never had
   profiles written (#16).
+- `install.sh` updates an older udev rule instead of keeping it: a rule in `/usr/lib` is
+  only trusted while it matches the release, since older rules miss newer mice.
+- The setup screen no longer shows the editor's keyboard hints.
+- The hardware self-test picks its DPI cases from each sensor's supported values and
+  retries a live DPI read that times out right after a profile reload.
 
 ## [0.2.0] - 2026-09-14
 
