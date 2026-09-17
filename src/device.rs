@@ -66,12 +66,11 @@ pub enum SessionError {
     #[error(transparent)]
     Onboard(#[from] OnboardError),
     #[error(
-        "the onboard profile directory has an invalid checksum; \
-         the device may never have had profiles written"
+        "the onboard profile directory's checksum does not match, so Omalogi will not read \
+         or change profiles; the profiles themselves may still be intact: run \
+         `omalogi profiles repair` to check and fix the directory"
     )]
     InvalidDirectoryChecksum,
-    #[error("sector {sector:#06x} read back with an invalid checksum twice")]
-    CorruptSector { sector: u16 },
     #[error("profile {number} does not exist; the device has {count} profile slots")]
     NoSuchProfile { number: usize, count: usize },
     #[error("profile {0} is disabled")]
@@ -158,6 +157,10 @@ pub struct Backup {
     pub description: Description,
     /// Sector number (`"0001"`) to raw sector bytes as lowercase hex.
     pub sectors: BTreeMap<String, String>,
+    /// User sectors that failed their checksum on both reads, saved as read so the state
+    /// before any repair is kept. A restore never writes them back.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub invalid_checksums: Vec<String>,
 }
 
 pub struct Session {
@@ -487,18 +490,34 @@ impl Session {
         }
 
         let mut sectors = BTreeMap::new();
+        let mut invalid = Vec::new();
         for (directory, max_entries) in directories {
-            let data = read_backup_sector(&feature, directory, description.sector_size).await?;
+            let (data, valid) =
+                read_backup_sector(&feature, directory, description.sector_size).await?;
+            if !valid {
+                invalid.push(directory);
+            }
             let entries = format::parse_directory(&data, max_entries.into());
             sectors.insert(directory, data);
             for entry in entries {
                 if sectors.len() >= usize::from(description.sector_count) {
                     break;
                 }
+                // A directory that fails its checksum may name anything; follow only the
+                // entries that can be user profile sectors.
+                if !valid
+                    && (entry.sector == format::USER_DIRECTORY_SECTOR
+                        || entry.sector >= format::ROM_DIRECTORY_SECTOR)
+                {
+                    continue;
+                }
                 if let Entry::Vacant(slot) = sectors.entry(entry.sector) {
-                    slot.insert(
-                        read_backup_sector(&feature, entry.sector, description.sector_size).await?,
-                    );
+                    let (data, valid) =
+                        read_backup_sector(&feature, entry.sector, description.sector_size).await?;
+                    if !valid {
+                        invalid.push(entry.sector);
+                    }
+                    slot.insert(data);
                 }
             }
         }
@@ -513,6 +532,10 @@ impl Session {
             sectors: sectors
                 .into_iter()
                 .map(|(sector, data)| (format!("{sector:04x}"), to_hex(&data)))
+                .collect(),
+            invalid_checksums: invalid
+                .into_iter()
+                .map(|sector| format!("{sector:04x}"))
                 .collect(),
         })
     }
@@ -594,26 +617,21 @@ fn labels_for(bindings: &[Binding]) -> Vec<Option<String>> {
         .collect()
 }
 
-/// Reads a sector for a backup. User sectors must pass their checksum, reading once more
-/// if not, so a backup never holds bytes a restore would refuse. Factory sectors carry
-/// no checksum.
+/// Reads a sector for a backup, and whether it can be trusted. A user sector that fails its
+/// checksum is read once more, and kept as read if it fails again, so a backup still
+/// captures memory that needs repairing. Factory sectors carry no checksum.
 async fn read_backup_sector(
     feature: &OnboardProfilesFeature,
     sector: u16,
     size: u16,
-) -> Result<Vec<u8>, SessionError> {
+) -> Result<(Vec<u8>, bool), SessionError> {
     let data = feature.read_sector(sector, size).await?;
     if sector >= format::ROM_DIRECTORY_SECTOR || format::sector_crc_valid(&data) {
-        return Ok(data);
+        return Ok((data, true));
     }
     let data = feature.read_sector(sector, size).await?;
-    if format::sector_crc_valid(&data) {
-        Ok(data)
-    } else if sector == format::USER_DIRECTORY_SECTOR {
-        Err(SessionError::InvalidDirectoryChecksum)
-    } else {
-        Err(SessionError::CorruptSector { sector })
-    }
+    let valid = format::sector_crc_valid(&data);
+    Ok((data, valid))
 }
 
 /// Reads the user profile directory, refusing one whose checksum does not match.

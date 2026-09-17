@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 use omalogi::{
     assets, daemon,
     device::{CLI_SOFTWARE_ID, Session},
-    editing::{BackupFile, ProfileChanges, save_backup},
+    editing::{BackupFile, DirectoryRepair, ProfileChanges, save_backup},
     error_chain,
     hidraw::{HidrawError, find_supported},
     lock::DeviceLock,
@@ -128,6 +128,15 @@ enum ProfilesAction {
     Disable {
         number: usize,
         /// Check the change, without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Rebuild a profile directory whose checksum does not match from its own entries.
+    ///
+    /// Only the directory is written, and only when its entries are consistent and every
+    /// profile it lists passes its own checksum. Profile memory is backed up first.
+    Repair {
+        /// Check the directory and show the result, without writing.
         #[arg(long)]
         dry_run: bool,
     },
@@ -405,6 +414,42 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
             )?;
         }
         DeviceCommand::Profiles {
+            action: Some(ProfilesAction::Repair { dry_run }),
+        } => {
+            // Checked before the backup, so an intact or unrepairable directory writes nothing.
+            let plan = session.plan_directory_repair().await?;
+            if dry_run {
+                output(json, &plan, || text::directory_repair(&plan, true))?;
+                return Ok(());
+            }
+            let path = default_backup_path(session.model().name)?;
+            let backup = session.backup().await?;
+            save_backup(&backup, &path)?;
+            let repair = session.repair_directory().await?;
+            let state = session.onboard().await?;
+            #[derive(Serialize)]
+            struct Repaired<'a> {
+                #[serde(flatten)]
+                repair: &'a DirectoryRepair,
+                backup: &'a PathBuf,
+            }
+            output(
+                json,
+                &Repaired {
+                    repair: &repair,
+                    backup: &path,
+                },
+                || {
+                    format!(
+                        "{}Backup of the memory before repairing: {}\n\n{}",
+                        text::directory_repair(&repair, false),
+                        path.display(),
+                        text::profiles(&state)
+                    )
+                },
+            )?;
+        }
+        DeviceCommand::Profiles {
             action:
                 Some(ProfilesAction::Edit {
                     number,
@@ -483,16 +528,20 @@ async fn run_device(json: bool, command: DeviceCommand) -> Result<(), Box<dyn Er
             struct Saved<'a> {
                 path: &'a PathBuf,
                 sectors: usize,
+                #[serde(skip_serializing_if = "<[String]>::is_empty")]
+                invalid_checksums: &'a [String],
             }
             let saved = Saved {
                 path: &path,
                 sectors: backup.sectors.len(),
+                invalid_checksums: &backup.invalid_checksums,
             };
             output(json, &saved, || {
                 format!(
-                    "Saved {} onboard memory sectors to {}\n",
+                    "Saved {} onboard memory sectors to {}\n{}",
                     saved.sectors,
-                    path.display()
+                    path.display(),
+                    text::invalid_checksums(saved.invalid_checksums)
                 )
             })?;
         }

@@ -330,6 +330,108 @@ fn bindings_at(sector: &[u8], offset: usize) -> [Binding; BUTTON_SLOTS] {
     })
 }
 
+/// Why a profile directory whose checksum does not match cannot be rebuilt from its own
+/// entries.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum DirectoryDamage {
+    #[error("its list of profiles has no end marker")]
+    NoEnd,
+    #[error("it lists no profiles")]
+    Empty,
+    #[error("it lists {count} profiles, but the mouse has {max} profile slots")]
+    TooManyEntries { count: usize, max: usize },
+    #[error("entry {position} names sector {sector:#06x}, which is not a user profile sector")]
+    NotAProfileSector { position: usize, sector: u16 },
+    #[error("sector {sector:#06x} is listed twice")]
+    Duplicate { sector: u16 },
+    #[error("entry {position} has an unknown on/off flag or reserved byte")]
+    BadEntry { position: usize },
+    #[error("it turns no profile on")]
+    NoneEnabled,
+}
+
+/// The entries of a user directory sector, strictly checked, so a directory whose checksum
+/// does not match can be written again from them.
+///
+/// Every entry up to the end marker must name a distinct user profile sector, with an
+/// on/off flag of 0 or 1 and a reserved byte of `0x00` or `0xFF` (the G502 X stores
+/// `0xFF`), and at least one profile must be on.
+///
+/// # Errors
+///
+/// The first inconsistency found.
+pub fn directory_entries_for_repair(
+    sector: &[u8],
+    max_entries: usize,
+) -> Result<Vec<DirectoryEntry>, DirectoryDamage> {
+    let body = sector
+        .split_last_chunk::<2>()
+        .map_or(sector, |(body, _)| body);
+    let mut entries: Vec<DirectoryEntry> = Vec::new();
+    let mut ended = false;
+    for (index, &[hi, lo, enabled, reserved]) in
+        body.as_chunks::<DIRECTORY_ENTRY_LEN>().0.iter().enumerate()
+    {
+        let sector = u16::from_be_bytes([hi, lo]);
+        if sector == DIRECTORY_END {
+            ended = true;
+            break;
+        }
+        let position = index + 1;
+        if entries.len() == max_entries {
+            return Err(DirectoryDamage::TooManyEntries {
+                count: position,
+                max: max_entries,
+            });
+        }
+        if sector == USER_DIRECTORY_SECTOR || sector >= ROM_DIRECTORY_SECTOR {
+            return Err(DirectoryDamage::NotAProfileSector { position, sector });
+        }
+        if entries.iter().any(|entry| entry.sector == sector) {
+            return Err(DirectoryDamage::Duplicate { sector });
+        }
+        if enabled > 1 || !matches!(reserved, 0x00 | 0xFF) {
+            return Err(DirectoryDamage::BadEntry { position });
+        }
+        entries.push(DirectoryEntry {
+            sector,
+            enabled: enabled == 1,
+        });
+    }
+    if !ended {
+        return Err(DirectoryDamage::NoEnd);
+    }
+    if entries.is_empty() {
+        return Err(DirectoryDamage::Empty);
+    }
+    if !entries.iter().any(|entry| entry.enabled) {
+        return Err(DirectoryDamage::NoneEnabled);
+    }
+    Ok(entries)
+}
+
+/// `directory` written again with its first `entry_count` entries kept byte for byte: the
+/// rest is `0xFF`, which also ends the list, and the last two bytes are a new checksum.
+/// This is how the G502 X lays out its own directory.
+///
+/// # Panics
+///
+/// When the entries and the end marker do not fit in the sector.
+#[must_use]
+pub fn rebuilt_directory(directory: &[u8], entry_count: usize) -> Vec<u8> {
+    let kept = entry_count * DIRECTORY_ENTRY_LEN;
+    assert!(
+        kept + DIRECTORY_ENTRY_LEN + 2 <= directory.len(),
+        "directory entries fit in the sector"
+    );
+    let mut data = vec![0xFF; directory.len()];
+    data[..kept].copy_from_slice(&directory[..kept]);
+    let crc_at = data.len() - 2;
+    let crc = crc_ccitt(&data[..crc_at]);
+    data[crc_at..].copy_from_slice(&crc.to_be_bytes());
+    data
+}
+
 pub(crate) fn decode_name(raw: &[u8]) -> Option<String> {
     let end = raw
         .iter()
@@ -423,6 +525,88 @@ mod tests {
         assert_eq!(
             entries,
             [(1, true), (2, true), (3, false), (4, false), (5, false)]
+        );
+    }
+
+    #[test]
+    fn rebuilds_the_g502x_directory_byte_for_byte() {
+        let directory = sector("0000");
+        let entries = directory_entries_for_repair(&directory, 5).expect("consistent");
+        assert_eq!(entries, parse_directory(&directory, 5));
+        assert_eq!(rebuilt_directory(&directory, entries.len()), directory);
+    }
+
+    #[test]
+    fn repairs_a_directory_whose_trailer_was_never_written() {
+        // Reported on a G502 X: the entries intact, byte 22 0x01 and the checksum 0xFFFF.
+        let original = sector("0000");
+        let mut damaged = original.clone();
+        damaged[22] = 0x01;
+        let crc_at = damaged.len() - 2;
+        damaged[crc_at..].copy_from_slice(&[0xFF, 0xFF]);
+        assert!(!sector_crc_valid(&damaged));
+
+        let entries = directory_entries_for_repair(&damaged, 5).expect("entries check out");
+        assert_eq!(rebuilt_directory(&damaged, entries.len()), original);
+    }
+
+    #[test]
+    fn refuses_to_rebuild_an_inconsistent_directory() {
+        let original = sector("0000");
+        let with = |edit: &dyn Fn(&mut Vec<u8>)| {
+            let mut data = original.clone();
+            edit(&mut data);
+            directory_entries_for_repair(&data, 5)
+        };
+        assert_eq!(
+            with(&|d| d.fill(0x00)),
+            Err(DirectoryDamage::NotAProfileSector {
+                position: 1,
+                sector: 0
+            })
+        );
+        assert_eq!(with(&|d| d.fill(0xFF)), Err(DirectoryDamage::Empty));
+        assert_eq!(
+            with(&|d| d[20..24].copy_from_slice(&[0x00, 0x06, 0x00, 0x00])),
+            Err(DirectoryDamage::TooManyEntries { count: 6, max: 5 })
+        );
+        assert_eq!(
+            with(&|d| d[5] = 0x01),
+            Err(DirectoryDamage::Duplicate { sector: 1 })
+        );
+        assert_eq!(
+            with(&|d| d[4..6].copy_from_slice(&[0x01, 0x01])),
+            Err(DirectoryDamage::NotAProfileSector {
+                position: 2,
+                sector: 0x0101
+            })
+        );
+        assert_eq!(
+            with(&|d| d[2] = 0x02),
+            Err(DirectoryDamage::BadEntry { position: 1 })
+        );
+        assert_eq!(
+            with(&|d| d[3] = 0x01),
+            Err(DirectoryDamage::BadEntry { position: 1 })
+        );
+        assert!(
+            with(&|d| d[3] = 0x00).is_ok(),
+            "a zero reserved byte is fine"
+        );
+        assert_eq!(
+            with(&|d| {
+                d[2] = 0x00;
+                d[6] = 0x00;
+            }),
+            Err(DirectoryDamage::NoneEnabled)
+        );
+        let full: Vec<u8> = (1..=6u8)
+            .flat_map(|n| [0x00, n, 0x01, 0x00])
+            .chain([0; 2])
+            .collect();
+        assert_eq!(
+            directory_entries_for_repair(&full, 6),
+            Err(DirectoryDamage::NoEnd)
         );
     }
 

@@ -14,6 +14,9 @@
 //! ← {"id": 3, "ok": false, "error": "…"}
 //! ```
 //!
+//! An error the overlay can act on also names its `kind`: `directory_checksum` when the
+//! profile directory fails its checksum, which `repair_directory` fixes.
+//!
 //! The device lock is held for each request, never while idle, so the daemon and CLI
 //! commands take turns with the server. Writes keep the CLI's guarantees: all profile
 //! memory is backed up before the session's first write, every write is read back and
@@ -27,7 +30,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{
-    device::Session,
+    device::{Session, SessionError},
     editing::{EditError, ProfileChanges, TakesEffect, save_backup},
     error_chain,
     lock::DeviceLock,
@@ -42,7 +45,8 @@ pub const SOFTWARE_ID: u8 = 0x0D;
 /// `omarchy plugin add`, asks for a helper update when this is older than it needs.
 ///
 /// 2: `state` reports `support`, and `accept_untested` accepts editing an untested mouse.
-pub const PROTOCOL: u32 = 2;
+/// 3: errors carry a `kind`, and `repair_directory` rebuilds a damaged profile directory.
+pub const PROTOCOL: u32 = 3;
 
 /// Where to save a backup for a device name.
 pub type BackupPath = fn(&str) -> Result<PathBuf, Box<dyn Error>>;
@@ -76,6 +80,48 @@ enum Command {
     },
     /// Accepts editing an untested mouse from now on; answers with its support.
     AcceptUntested,
+    /// Rebuilds a profile directory whose checksum does not match; answers with every
+    /// profile.
+    RepairDirectory,
+}
+
+/// A request that failed: the message to show, and a `kind` for errors the overlay acts on.
+struct Failure {
+    message: String,
+    kind: Option<&'static str>,
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            kind: None,
+        }
+    }
+}
+
+impl Failure {
+    fn new(error: &(dyn Error + 'static)) -> Self {
+        let mut source: Option<&(dyn Error + 'static)> = Some(error);
+        let mut kind = None;
+        while let Some(error) = source {
+            // `EditError::Session` is transparent: it is not its own source, so look inside.
+            let session = error.downcast_ref::<SessionError>().or_else(|| {
+                match error.downcast_ref::<EditError>() {
+                    Some(EditError::Session(session)) => Some(session),
+                    _ => None,
+                }
+            });
+            if matches!(session, Some(SessionError::InvalidDirectoryChecksum)) {
+                kind = Some("directory_checksum");
+            }
+            source = error.source();
+        }
+        Self {
+            message: error_chain(error),
+            kind,
+        }
+    }
 }
 
 /// The changes `profiles edit` takes, as JSON. Slots are keys: `{"3": "key:ctrl+t"}`.
@@ -166,11 +212,20 @@ impl Server {
                     // from two processes at once can time out or read the wrong bytes.
                     let outcome = match self.lock() {
                         Ok(_lock) => self.handle(request.command).await,
-                        Err(error) => Err(error_chain(error.as_ref())),
+                        Err(error) => Err(Failure::new(error.as_ref())),
                     };
                     match outcome {
                         Ok(result) => json!({ "id": request.id, "ok": true, "result": result }),
-                        Err(error) => json!({ "id": request.id, "ok": false, "error": error }),
+                        Err(Failure {
+                            message,
+                            kind: None,
+                        }) => json!({ "id": request.id, "ok": false, "error": message }),
+                        Err(Failure {
+                            message,
+                            kind: Some(kind),
+                        }) => {
+                            json!({ "id": request.id, "ok": false, "error": message, "kind": kind })
+                        }
                     }
                 }
                 Err(error) => {
@@ -188,12 +243,12 @@ impl Server {
         Ok(())
     }
 
-    async fn handle(&mut self, command: Command) -> Result<Value, String> {
+    async fn handle(&mut self, command: Command) -> Result<Value, Failure> {
         match command {
             Command::State => {
-                let info = self.session.info().await.map_err(|e| error_chain(&e))?;
-                let onboard = self.session.onboard().await.map_err(|e| error_chain(&e))?;
-                let support = self.session.support().await.map_err(|e| error_chain(&e))?;
+                let info = self.session.info().await.map_err(|e| Failure::new(&e))?;
+                let onboard = self.session.onboard().await.map_err(|e| Failure::new(&e))?;
+                let support = self.session.support().await.map_err(|e| Failure::new(&e))?;
                 Ok(json!({
                     "info": info,
                     "onboard": onboard,
@@ -205,28 +260,32 @@ impl Server {
                 self.session
                     .activate_profile(profile)
                     .await
-                    .map_err(|e| error_chain(&e))?;
+                    .map_err(|e| Failure::new(&e))?;
                 Ok(json!({ "active_profile": profile }))
             }
             Command::Apply { profile, changes } => {
                 let changes = changes.parse()?;
                 self.apply(profile, &changes)
                     .await
-                    .map_err(|e| error_chain(e.as_ref()))
+                    .map_err(|e| Failure::new(e.as_ref()))
             }
-            Command::Undo => self.undo().await.map_err(|e| error_chain(e.as_ref())),
+            Command::Undo => self.undo().await.map_err(|e| Failure::new(e.as_ref())),
             Command::SetEnabled { profile, enabled } => self
                 .set_enabled(profile, enabled)
                 .await
-                .map_err(|e| error_chain(e.as_ref())),
+                .map_err(|e| Failure::new(e.as_ref())),
             Command::AcceptUntested => {
                 let support = self
                     .session
                     .accept_untested()
                     .await
-                    .map_err(|e| error_chain(&e))?;
+                    .map_err(|e| Failure::new(&e))?;
                 Ok(json!({ "support": support }))
             }
+            Command::RepairDirectory => self
+                .repair_directory()
+                .await
+                .map_err(|e| Failure::new(e.as_ref())),
         }
     }
 
@@ -239,6 +298,15 @@ impl Server {
             self.backup = Some(path);
         }
         Ok(())
+    }
+
+    async fn repair_directory(&mut self) -> Result<Value, Box<dyn Error>> {
+        // Checked before the backup, so an intact or unrepairable directory writes nothing.
+        self.session.plan_directory_repair().await?;
+        self.ensure_backup().await?;
+        let repair = self.session.repair_directory().await?;
+        let onboard = self.session.onboard().await?;
+        Ok(json!({ "repair": repair, "onboard": onboard, "backup": self.backup }))
     }
 
     async fn set_enabled(

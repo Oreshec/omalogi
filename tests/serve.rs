@@ -155,3 +155,82 @@ async fn edits_undo_and_activation_over_json_lines() {
     served.expect("server ends cleanly");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[tokio::test]
+async fn a_damaged_directory_is_reported_and_repaired() {
+    let dir = test_dir().join("repair");
+    let _ = std::fs::remove_dir_all(&dir);
+    let device = FakeG502x::new();
+    let state = device.state();
+    {
+        let mut state = state.lock().expect("state");
+        let directory = state.sectors.get_mut(&0).expect("sector 0");
+        let crc_at = directory.len() - 2;
+        directory[crc_at..].copy_from_slice(&[0xFF, 0xFF]);
+    }
+    let session = Session::connect(
+        device,
+        SUPPORTED_DEVICES[0],
+        "emulated".to_owned(),
+        serve::SOFTWARE_ID,
+    )
+    .await
+    .expect("session starts");
+    let server = serve::Server::new(session, Some(dir.join("device.lock")), backup_path);
+
+    let (client, server_side) = tokio::io::duplex(1 << 20);
+    let (server_read, server_write) = tokio::io::split(server_side);
+    let (client_read, mut client_write) = tokio::io::split(client);
+
+    let script = async {
+        let mut responses = BufReader::new(client_read).lines();
+        let mut ask = async |request: Value| -> Value {
+            let line = format!("{request}\n");
+            client_write.write_all(line.as_bytes()).await.expect("send");
+            let reply = responses.next_line().await.expect("read").expect("a reply");
+            serde_json::from_str(&reply).expect("JSON reply")
+        };
+
+        let reply = ask(json!({ "id": 1, "cmd": "state" })).await;
+        assert_eq!(reply["ok"], false, "{reply}");
+        assert_eq!(reply["kind"], "directory_checksum");
+
+        let reply = ask(json!({ "id": 2, "cmd": "apply", "profile": 3, "rate": 500 })).await;
+        assert_eq!(reply["kind"], "directory_checksum", "{reply}");
+
+        let reply = ask(json!({ "id": 3, "cmd": "repair_directory" })).await;
+        assert_eq!(reply["ok"], true, "{reply}");
+        assert_eq!(
+            reply["result"]["onboard"]["profiles"]
+                .as_array()
+                .map(Vec::len),
+            Some(5)
+        );
+        let backup = PathBuf::from(reply["result"]["backup"].as_str().expect("backup path"));
+        assert!(backup.exists(), "backed up before repairing");
+        assert_eq!(
+            state.lock().expect("state").sectors[&0],
+            fixture_sectors()[&0]
+        );
+
+        let reply = ask(json!({ "id": 4, "cmd": "state" })).await;
+        assert_eq!(reply["ok"], true, "{reply}");
+        assert_eq!(reply["result"]["helper"]["protocol"], serve::PROTOCOL);
+
+        let reply = ask(json!({ "id": 5, "cmd": "repair_directory" })).await;
+        assert_eq!(reply["ok"], false);
+        assert!(
+            reply.get("kind").is_none(),
+            "an intact directory needs nothing: {reply}"
+        );
+
+        drop(client_write);
+    };
+
+    let (served, ()) = tokio::join!(
+        server.run(BufReader::new(server_read), server_write),
+        script
+    );
+    served.expect("server ends cleanly");
+    let _ = std::fs::remove_dir_all(&dir);
+}

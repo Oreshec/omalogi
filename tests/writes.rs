@@ -586,3 +586,152 @@ async fn refuses_backups_that_do_not_fit() {
     ));
     assert_eq!(h.write_requests(), 0);
 }
+
+/// Damages the directory as reported on a G502 X: the entries intact, one padding byte
+/// changed and the checksum never written.
+fn damage_directory(state: &Mutex<State>) {
+    let mut state = state.lock().expect("state");
+    let directory = state.sectors.get_mut(&0).expect("sector 0");
+    directory[22] = 0x01;
+    let crc_at = directory.len() - 2;
+    directory[crc_at..].copy_from_slice(&[0xFF, 0xFF]);
+}
+
+#[tokio::test]
+async fn a_damaged_directory_is_repaired_from_its_own_entries() {
+    let mut h = Harness::new("repair").await;
+    let original = fixture_sectors();
+    damage_directory(&h.state);
+
+    let refused = h.session.onboard().await.expect_err("profiles are refused");
+    assert!(
+        refused.to_string().contains("omalogi profiles repair"),
+        "{refused}"
+    );
+    assert!(matches!(
+        h.session
+            .apply_profile_changes(3, &rate(500), &h.backup_path("edit"))
+            .await,
+        Err(EditError::Session(_))
+    ));
+
+    // The backup still captures everything, and flags the directory.
+    let backup = h.session.backup().await.expect("backup of damaged memory");
+    assert_eq!(backup.invalid_checksums, ["0000"]);
+    for sector in ["0000", "0001", "0002", "0003", "0004", "0005"] {
+        assert!(backup.sectors.contains_key(sector), "sector {sector}");
+    }
+
+    let plan = h.session.plan_directory_repair().await.expect("repairable");
+    let listed: Vec<_> = plan
+        .profiles
+        .iter()
+        .map(|entry| (entry.profile, entry.sector, entry.enabled))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            (1, 1, true),
+            (2, 2, true),
+            (3, 3, false),
+            (4, 4, false),
+            (5, 5, false)
+        ]
+    );
+    assert_eq!(h.write_requests(), 0, "planning writes nothing");
+
+    h.session.repair_directory().await.expect("repaired");
+    assert_eq!(h.committed(), [0], "only the directory is written");
+    assert_eq!(h.sector(0), original[&0], "byte for byte as it was");
+    assert_eq!(
+        h.session
+            .onboard()
+            .await
+            .expect("profiles read")
+            .profiles
+            .len(),
+        5
+    );
+    assert!(matches!(
+        h.session.plan_directory_repair().await,
+        Err(EditError::DirectoryIntact)
+    ));
+}
+
+#[tokio::test]
+async fn a_directory_that_cannot_be_rebuilt_is_left_alone() {
+    let mut h = Harness::new("unrepairable").await;
+    assert!(matches!(
+        h.session.plan_directory_repair().await,
+        Err(EditError::DirectoryIntact)
+    ));
+
+    // A profile the directory lists is damaged too.
+    damage_directory(&h.state);
+    h.state
+        .lock()
+        .expect("state")
+        .sectors
+        .get_mut(&2)
+        .expect("sector 2")[40] ^= 0xFF;
+    let result = h.session.repair_directory().await;
+    assert!(
+        matches!(
+            result,
+            Err(EditError::DamagedProfile {
+                number: 2,
+                sector: 2
+            })
+        ),
+        "{result:?}"
+    );
+
+    // Entries that do not make sense.
+    h.state
+        .lock()
+        .expect("state")
+        .sectors
+        .get_mut(&0)
+        .expect("sector 0")[5] = 0x01;
+    let result = h.session.repair_directory().await;
+    assert!(
+        matches!(result, Err(EditError::DirectoryUnrepairable(_))),
+        "{result:?}"
+    );
+    assert!(
+        result
+            .expect_err("refused")
+            .to_string()
+            .contains("sector 0x0001 is listed twice")
+    );
+    assert_eq!(h.write_requests(), 0);
+}
+
+#[tokio::test]
+async fn restore_works_past_a_damaged_directory() {
+    let mut h = Harness::new("restore-damaged").await;
+    let original = fixture_sectors();
+    let good = h.backup_path("good");
+    save_backup(&h.session.backup().await.expect("backup"), &good).expect("save");
+    damage_directory(&h.state);
+
+    let before = h.backup_path("before-restore");
+    let report = h
+        .session
+        .restore(&BackupFile::load(&good).expect("loads"), &before)
+        .await
+        .expect("restore succeeds");
+    assert_eq!(report.sectors, [0]);
+    assert_eq!(h.sector(0), original[&0]);
+
+    // The damaged state was kept, flagged, and is never written back.
+    let damaged = BackupFile::load(&before).expect("loads");
+    assert_eq!(damaged.invalid_checksums, ["0000"]);
+    let refused = h.session.plan_restore(&damaged).await;
+    assert!(
+        matches!(&refused, Err(EditError::InvalidBackup { reason, .. })
+            if reason.contains("never written back")),
+        "{refused:?}"
+    );
+    assert_eq!(h.committed(), [0]);
+}

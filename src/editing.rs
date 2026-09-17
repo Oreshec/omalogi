@@ -25,7 +25,7 @@ use crate::{
     onboard::{
         Mode, OnboardError, OnboardProfilesFeature,
         edit::{MAX_NAME_LEN, ProfileEditor, Table, directory_with_enabled},
-        format::{self, Binding, DPI_STAGE_COUNT, Description, Profile},
+        format::{self, Binding, DPI_STAGE_COUNT, Description, DirectoryDamage, Profile},
     },
 };
 
@@ -88,6 +88,23 @@ pub enum EditError {
          changed; if this persists, restore a backup"
     )]
     CorruptSector { sector: u16 },
+    #[error("the profile directory's checksum matches; there is nothing to repair")]
+    DirectoryIntact,
+    #[error(
+        "the profile directory read back differently twice, so it was not repaired; close \
+         other programs using the mouse and try again"
+    )]
+    DirectoryUnstable,
+    #[error(
+        "the profile directory cannot be rebuilt from its entries: {0}; restore a backup made \
+         before it was damaged with `omalogi restore`"
+    )]
+    DirectoryUnrepairable(DirectoryDamage),
+    #[error(
+        "the profile directory was not repaired: profile {number} (sector {sector:#06x}) also \
+         fails its checksum; restore a backup made before it was damaged with `omalogi restore`"
+    )]
+    DamagedProfile { number: usize, sector: u16 },
     #[error("`{0}` is not a usable profile name: use up to 47 printable ASCII characters")]
     InvalidName(String),
     #[error("profile {0} is in use; activate another profile before turning it off")]
@@ -230,6 +247,25 @@ pub struct RestorePlan {
     writes: Vec<SectorWrite>,
 }
 
+/// A profile the repaired directory lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RepairedEntry {
+    pub profile: usize,
+    pub sector: u16,
+    pub enabled: bool,
+}
+
+/// A profile directory rebuilt from its own entries, not yet written.
+#[derive(Debug, Clone, Serialize)]
+pub struct DirectoryRepair {
+    pub sector: u16,
+    pub profiles: Vec<RepairedEntry>,
+    #[serde(skip)]
+    previous: Vec<u8>,
+    #[serde(skip)]
+    repaired: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RestoreReport {
     pub sectors: Vec<u16>,
@@ -246,6 +282,9 @@ pub struct BackupFile {
     pub product_id: u16,
     pub description: Description,
     pub sectors: BTreeMap<String, String>,
+    /// Sectors saved with an invalid checksum; never written back.
+    #[serde(default)]
+    pub invalid_checksums: Vec<String>,
     #[serde(skip)]
     path: String,
 }
@@ -288,9 +327,12 @@ impl BackupFile {
             return Err(invalid(format!("sector {sector:04x} has the wrong size")));
         }
         if !format::sector_crc_valid(&data) {
-            return Err(invalid(format!(
-                "sector {sector:04x} has an invalid checksum"
-            )));
+            let saved = if self.invalid_checksums.contains(&format!("{sector:04x}")) {
+                "was saved with an invalid checksum, so it is never written back"
+            } else {
+                "has an invalid checksum"
+            };
+            return Err(invalid(format!("sector {sector:04x} {saved}")));
         }
         Ok(data)
     }
@@ -678,7 +720,10 @@ impl Session {
         let mut writes = Vec::new();
         for sector in sectors {
             let data = backup.user_sector(sector)?;
-            let previous = read_user_sector(&feature, sector, description.sector_size).await?;
+            // The mouse's current bytes are only compared and, if a write fails, put back as
+            // they were, so they need not pass their checksum: restoring is how a damaged
+            // sector is fixed.
+            let previous = read_sector_as_is(&feature, sector, description.sector_size).await?;
             if data != previous {
                 writes.push(SectorWrite {
                     sector,
@@ -716,6 +761,68 @@ impl Session {
             backup: backup_path.to_owned(),
             takes_effect,
         })
+    }
+
+    /// Rebuilds a profile directory whose checksum does not match from its own entries,
+    /// without writing. Refused unless the directory reads the same twice, its entries are
+    /// consistent ([`format::directory_entries_for_repair`]) and every profile it lists
+    /// passes its own checksum.
+    pub async fn plan_directory_repair(&mut self) -> Result<DirectoryRepair, EditError> {
+        let feature = self.onboard_feature().await?;
+        let description = feature.description().await?;
+        let size = description.sector_size;
+        let first = feature
+            .read_sector(format::USER_DIRECTORY_SECTOR, size)
+            .await?;
+        if format::sector_crc_valid(&first) {
+            return Err(EditError::DirectoryIntact);
+        }
+        let second = feature
+            .read_sector(format::USER_DIRECTORY_SECTOR, size)
+            .await?;
+        if format::sector_crc_valid(&second) {
+            return Err(EditError::DirectoryIntact);
+        }
+        if first != second {
+            return Err(EditError::DirectoryUnstable);
+        }
+
+        let entries =
+            format::directory_entries_for_repair(&first, description.profile_count.into())
+                .map_err(EditError::DirectoryUnrepairable)?;
+        let mut profiles = Vec::with_capacity(entries.len());
+        for (position, entry) in entries.iter().enumerate() {
+            let number = position + 1;
+            match read_user_sector(&feature, entry.sector, size).await {
+                Ok(_) => {}
+                Err(EditError::CorruptSector { sector }) => {
+                    return Err(EditError::DamagedProfile { number, sector });
+                }
+                Err(error) => return Err(error),
+            }
+            profiles.push(RepairedEntry {
+                profile: number,
+                sector: entry.sector,
+                enabled: entry.enabled,
+            });
+        }
+        let repaired = format::rebuilt_directory(&first, entries.len());
+        Ok(DirectoryRepair {
+            sector: format::USER_DIRECTORY_SECTOR,
+            profiles,
+            previous: first,
+            repaired,
+        })
+    }
+
+    /// Writes the repaired directory, verified by reading it back. The caller makes sure a
+    /// backup exists first.
+    pub async fn repair_directory(&mut self) -> Result<DirectoryRepair, EditError> {
+        let repair = self.plan_directory_repair().await?;
+        self.ensure_writes_accepted().await?;
+        let feature = self.onboard_feature().await?;
+        write_verified(&feature, repair.sector, &repair.repaired, &repair.previous).await?;
+        Ok(repair)
     }
 
     async fn dpi_values(&mut self) -> Result<Vec<u16>, EditError> {
@@ -776,6 +883,20 @@ async fn read_user_sector(
         }
     }
     Err(EditError::CorruptSector { sector })
+}
+
+/// Reads a sector twice when its checksum fails, and returns the bytes whether or not the
+/// second read passes.
+async fn read_sector_as_is(
+    feature: &OnboardProfilesFeature,
+    sector: u16,
+    size: u16,
+) -> Result<Vec<u8>, EditError> {
+    let data = feature.read_sector(sector, size).await?;
+    if format::sector_crc_valid(&data) {
+        return Ok(data);
+    }
+    Ok(feature.read_sector(sector, size).await?)
 }
 
 /// Selects profile `number` (1-based) and confirms that the mouse reports it.

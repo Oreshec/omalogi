@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use omalogi::{
     device::{Info, OnboardState, ProfileSlot},
-    editing::{EditPlan, RestorePlan, RestoreReport, TakesEffect, WriteReport},
+    editing::{DirectoryRepair, EditPlan, RestorePlan, RestoreReport, TakesEffect, WriteReport},
     onboard::{
         Mode,
         format::{Binding, Profile},
@@ -126,6 +126,49 @@ pub fn restore_report(report: &RestoreReport) -> String {
         "Backup of the memory before restoring: {}",
         report.backup.display()
     );
+    out
+}
+
+pub fn directory_repair(repair: &DirectoryRepair, dry_run: bool) -> String {
+    let mut out = if dry_run {
+        "The profile directory's checksum does not match, but its entries check out:\n"
+    } else {
+        "Repaired and verified the profile directory. It lists:\n"
+    }
+    .to_owned();
+    for entry in &repair.profiles {
+        let _ = writeln!(
+            out,
+            "  Profile {}  sector {:04x}  {}",
+            entry.profile,
+            entry.sector,
+            if entry.enabled { "on" } else { "off" }
+        );
+    }
+    if dry_run {
+        let _ = writeln!(
+            out,
+            "Repairing rewrites only sector {:04x}, with these entries and a new checksum \
+             (dry run, nothing written).",
+            repair.sector
+        );
+    }
+    out
+}
+
+/// A warning for sectors a backup saved with an invalid checksum, or nothing.
+pub fn invalid_checksums(sectors: &[String]) -> String {
+    if sectors.is_empty() {
+        return String::new();
+    }
+    let mut out = format!(
+        "Warning: sector {} failed its checksum and was saved as read; a restore never \
+         writes it back.\n",
+        sectors.join(", ")
+    );
+    if sectors.iter().any(|sector| sector == "0000") {
+        out.push_str("Run `omalogi profiles repair --dry-run` to check the profile directory.\n");
+    }
     out
 }
 
