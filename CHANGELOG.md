@@ -5,6 +5,15 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.3.1] - 2026-09-17
+
+### Added
+
+- **Uninstall** in the overlay's header, also on the setup screen. It asks with Omarchy's
+  confirm dialog, then runs the plugin's `uninstall.sh` in the floating terminal, where
+  its plan and the sudo prompt stay visible. `uninstall.sh --yes` skips its own question
+  for callers that already asked.
+
 ## [0.3.0] - 2026-09-17
 
 ### Added
