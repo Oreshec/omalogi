@@ -55,6 +55,16 @@ function localPath(url) {
   return decodeURIComponent(String(url).replace(/^file:\/\//, ""))
 }
 
+// This plugin's version, kept equal to manifest.json by a test. Omarchy's shell keeps a
+// plugin's overlay loaded, so after an update the running code can be older than the
+// files on disk; the manifest is read fresh and says which version those files are.
+var VERSION = "0.3.2"
+
+// Whether the shell is running an older copy of this overlay than the installed files.
+function staleShell(manifest) {
+  return !!manifest && typeof manifest.version === "string" && manifest.version !== VERSION
+}
+
 // The oldest `omalogi serve` request format this plugin works with.
 var REQUIRED_PROTOCOL = 3
 
@@ -154,6 +164,13 @@ function setupCopy(kind, message) {
       body: "This version of the plugin needs a newer helper. The installer updates it in place.",
       action: "Update helper",
       installer: true
+    }
+  case "stale":
+    return {
+      title: "Restart the shell to finish updating",
+      body: "Omalogi's files were updated, but Omarchy's shell still has the previous version loaded. Restarting the shell loads the new one. Your windows and workspaces stay as they are.",
+      action: "Restart shell",
+      installer: false
     }
   case "directory":
     return {

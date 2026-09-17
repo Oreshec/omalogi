@@ -38,7 +38,11 @@ Item {
   property bool uninstallOpen: false
   readonly property var supportBadge: Model.supportBadge(root.support)
   // What stands between the plugin and the mouse (see Model.setupState), or "".
-  readonly property string setupKind: root.helperOutdated ? "outdated" : Model.setupState(root.loadError, root.loadErrorKind)
+  // A shell running an older copy of this overlay comes first: nothing else can be
+  // trusted to behave as this version does.
+  readonly property string setupKind: Model.staleShell(root.manifest) ? "stale"
+    : root.helperOutdated ? "outdated"
+    : Model.setupState(root.loadError, root.loadErrorKind)
   property string notice: ""
   property bool noticeIsError: false
   property int cursor: 0
@@ -374,8 +378,17 @@ Item {
   // The setup card's one step: repairing the profile list happens here, everything else
   // in the installer.
   function runSetupAction() {
-    if (root.setupKind === "directory") root.repairDirectory()
+    if (root.setupKind === "stale") root.restartShell()
+    else if (root.setupKind === "directory") root.repairDirectory()
     else root.installHelper()
+  }
+
+  // Loads the installed version of this plugin, which the running shell is older than.
+  // Omarchy restarts its shell the same way after an update.
+  function restartShell() {
+    server.stop()
+    Util.execArgv(["omarchy-restart-shell"])
+    root.close()
   }
 
   // Rebuilds a damaged profile directory, then reads the mouse again. A directory the

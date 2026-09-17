@@ -5,6 +5,12 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Fixed
+
+- Omalogi says when Omarchy's shell is running an older copy of the overlay than the
+  installed files, and offers to restart the shell. The shell keeps a plugin's overlay
+  loaded, so until now an update silently kept the previous version running.
+
 ## [0.3.2] - 2026-09-17
 
 ### Fixed

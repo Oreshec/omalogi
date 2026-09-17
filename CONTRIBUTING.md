@@ -95,6 +95,12 @@ so everything about a model stays in one place.
    `VERIFIED_LAYOUTS` if new, and a line to `packaging/udev/70-omalogi.rules`.
 6. Run and log the hardware tests, then list the device as tested in the README.
 
+## Releasing
+
+One version lives in four places, and a test fails when the last two disagree:
+`Cargo.toml`, `manifest.json`, `VERSION` in `plugin/Model.js`, and the `CHANGELOG.md`
+heading. Tag `vX.Y.Z` on `main` once they match; the tag builds the release.
+
 ## Commits
 
 One logical change per commit, [Conventional Commits](https://www.conventionalcommits.org)

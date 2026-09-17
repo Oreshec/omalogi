@@ -622,6 +622,7 @@ test("the setup screen names the one step that reaches the mouse", () => {
   assert.equal(Model.setupCopy("outdated").action, "Update helper")
   assert.equal(Model.setupCopy("device").action, "")
   assert.equal(Model.setupCopy("directory").action, "Repair")
+  assert.equal(Model.setupCopy("stale").action, "Restart shell")
   assert.equal(Model.setupCopy("directory").installer, false, "repairing runs no installer")
   assert.equal(Model.setupCopy("outdated").installer, true)
   assert.equal(Model.setupCopy("error", "device request failed").body, "device request failed")
@@ -668,4 +669,14 @@ test("untested mice get a badge, one acceptance and a report link", () => {
   assert.equal(url, "https://github.com/elberacasa/omalogi/issues/new?template=mouse.yml&title=%5BMouse%5D%3A%20G502%20Hero&model=Logitech%20G502%20Hero&device_id=046d%3Ac08b&firmware=U1%2027.03.B0010")
   assert.doesNotMatch(Model.reportUrl({ ...hero, firmware: [] }, untested), /firmware=/, "no firmware line when none is active")
   assert.doesNotMatch(url, /unit|serial|backup/i)
+})
+
+test("the plugin knows when the shell runs an older copy of it", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "manifest.json"), "utf8"))
+  assert.equal(Model.VERSION, manifest.version,
+    "Model.VERSION and manifest.json must name the same version, or every overlay asks for a restart")
+  assert.equal(Model.staleShell(manifest), false)
+  assert.equal(Model.staleShell({ version: "0.0.1" }), true)
+  assert.equal(Model.staleShell({}), false, "a manifest without a version says nothing")
+  assert.equal(Model.staleShell(null), false)
 })
