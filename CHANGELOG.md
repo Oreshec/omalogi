@@ -5,6 +5,26 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Added
+
+- `omalogi profiles repair` rebuilds a profile directory that fails its checksum from its
+  own entries, with `--dry-run`. It writes only the directory, and only when the entries
+  are consistent and every profile they list passes its checksum; the write is backed up
+  first and verified. The overlay offers the same repair, and `omalogi serve` gains
+  `repair_directory` and a `kind` on errors it can act on (protocol 3). Reported with a
+  byte-level analysis by @davidichung (#16).
+- Mouse reports: one issue per model, listed in #15. A "Verify it" report is assigned to
+  its author as the claim on the model, `/claim` and `/unclaim` take and return a claim
+  on an existing issue, and a second report for the same model is pointed at the first.
+  The overlay's **Help verify it** opens the form filled in.
+
+### Fixed
+
+- A profile directory that fails its checksum no longer blocks everything: `backup` saves
+  such sectors as read and flags them, and `restore` works past them. The error says the
+  profiles may be intact and names the repair, instead of blaming a mouse that never had
+  profiles written (#16).
+
 ## [0.2.0] - 2026-09-14
 
 ### Added

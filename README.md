@@ -88,7 +88,8 @@ Writing onboard memory is the risky part of any mouse tool. Omalogi:
 
 Every Omalogi process holds a device lock while it talks to the mouse, because requests
 from two processes at once can time out or read back the wrong bytes; any profile data
-that fails its checksum is read again and otherwise refused, never edited.
+that fails its checksum is read again and otherwise refused, never edited. A backup still
+saves such a sector as read, flagged, and a restore never writes it back.
 
 Every command that writes has a `--dry-run` that shows the exact change without writing.
 Hardware test results are logged in [docs/hardware-tests.md](docs/hardware-tests.md).
@@ -179,6 +180,7 @@ omalogi profiles activate 2        # switch the active profile
 omalogi profiles enable 3          # turn a profile on (disable turns it off)
 omalogi backup                     # save all profile memory to a file
 omalogi restore FILE --dry-run     # see what restoring would write
+omalogi profiles repair --dry-run  # check a profile directory that fails its checksum
 ```
 
 Edit a profile, preview first:
@@ -298,7 +300,8 @@ stays active until focus changes. Its log: `journalctl --user -u omalogi`.
 | Problem | Fix |
 |---|---|
 | `permission denied opening /dev/hidrawN` | Install the udev rule above and replug the mouse. For one session: `sudo setfacl -m u:$USER:rw /dev/hidrawN`. |
-| `no supported Logitech device found` | Connect the G502 X over USB. Wireless receivers are not supported yet. |
+| `no supported Logitech mouse found` | Plug a G-series mouse in over USB, or turn on a wireless one paired to its receiver. |
+| `the onboard profile directory's checksum does not match` | `omalogi profiles repair --dry-run` checks that the directory's entries and every profile they list are intact; without `--dry-run` it backs up, rewrites only the directory and verifies it. The overlay offers the same repair. If it refuses, restore a backup made before the damage. |
 | Overlay or indicator missing after an update | `omarchy-shell shell rescanPlugins`; if a new plugin file was added, restart the shell. |
 | Indicator shows only the mouse icon | The daemon is not running: `systemctl --user status omalogi`. |
 | An edit went wrong | `omalogi restore ~/.local/state/omalogi/backups/<file>` with the backup saved before it. |
