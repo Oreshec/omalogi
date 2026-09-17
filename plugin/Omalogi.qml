@@ -861,8 +861,10 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacing.md
 
+            // Editor keys only mean something once the editor is showing.
             Label {
               anchors.verticalCenter: parent.verticalCenter
+              visible: root.ready && root.setupKind === ""
               opacity: 0.5
               text: root.assignments
                 ? "2 Sensitivity    ←→ view    g G-Shift    ↑↓ profile    ctrl+z undo    esc close"
