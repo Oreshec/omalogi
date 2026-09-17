@@ -1,6 +1,6 @@
 pkgbase = omalogi
 	pkgdesc = Configure Logitech G-series mice on Omarchy: onboard profiles, DPI, buttons, per-app switching
-	pkgver = 0.3.0
+	pkgver = 0.3.2
 	pkgrel = 1
 	url = https://github.com/elberacasa/omalogi
 	install = omalogi.install
@@ -13,7 +13,7 @@ pkgbase = omalogi
 	optdepends = omarchy: shell plugin and bar indicator
 	optdepends = hyprland: automatic switching per app and monitor
 	options = !lto
-	source = omalogi-0.3.0.tar.gz::https://github.com/elberacasa/omalogi/archive/refs/tags/v0.3.0.tar.gz
-	sha256sums = ce7ddedbc39a5cfb52e4744ba9098b43b2aec2ad92cf3c5c3d2879d2c8993cdc
+	source = omalogi-0.3.2.tar.gz::https://github.com/elberacasa/omalogi/archive/refs/tags/v0.3.2.tar.gz
+	sha256sums = 5119c9516973276636efc8831818ddb9901a8b38d7607bc744e8f6560ebf1886
 
 pkgname = omalogi
