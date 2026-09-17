@@ -58,7 +58,7 @@ function localPath(url) {
 // This plugin's version, kept equal to manifest.json by a test. Omarchy's shell keeps a
 // plugin's overlay loaded, so after an update the running code can be older than the
 // files on disk; the manifest is read fresh and says which version those files are.
-var VERSION = "0.3.2"
+var VERSION = "0.3.3"
 
 // Whether the shell is running an older copy of this overlay than the installed files.
 function staleShell(manifest) {

@@ -5,6 +5,8 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.3.3] - 2026-09-17
+
 ### Fixed
 
 - Omalogi says when Omarchy's shell is running an older copy of the overlay than the
