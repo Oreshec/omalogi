@@ -722,6 +722,11 @@ async fn restore_works_past_a_damaged_directory() {
         .await
         .expect("restore succeeds");
     assert_eq!(report.sectors, [0]);
+    assert_eq!(
+        report.takes_effect,
+        TakesEffect::Now,
+        "no profile to load for the directory alone"
+    );
     assert_eq!(h.sector(0), original[&0]);
 
     // The damaged state was kept, flagged, and is never written back.

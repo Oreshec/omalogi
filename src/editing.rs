@@ -755,7 +755,17 @@ impl Session {
         for write in &plan.writes {
             write_verified(&feature, write.sector, &write.data, &write.previous).await?;
         }
-        let takes_effect = self.load_written(&plan.sectors).await?;
+        // The directory is consulted as it is, so a restore that wrote only the directory
+        // has no profile to load again.
+        let takes_effect = if plan
+            .sectors
+            .iter()
+            .all(|&sector| sector == format::USER_DIRECTORY_SECTOR)
+        {
+            TakesEffect::Now
+        } else {
+            self.load_written(&plan.sectors).await?
+        };
         Ok(RestoreReport {
             sectors: plan.sectors,
             backup: backup_path.to_owned(),
