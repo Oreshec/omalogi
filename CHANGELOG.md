@@ -5,6 +5,8 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.3.0] - 2026-09-17
+
 ### Added
 
 - `omalogi profiles repair` rebuilds a profile directory that fails its checksum from its
