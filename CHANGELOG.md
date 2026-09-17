@@ -5,6 +5,8 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.3.2] - 2026-09-17
+
 ### Fixed
 
 - Install helper, Update helper and Allow access close the overlay before opening the
