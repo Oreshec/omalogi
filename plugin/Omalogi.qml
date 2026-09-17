@@ -35,6 +35,7 @@ Item {
   // before the first save.
   property var support: null
   property bool acceptOpen: false
+  property bool uninstallOpen: false
   readonly property var supportBadge: Model.supportBadge(root.support)
   // What stands between the plugin and the mouse (see Model.setupState), or "".
   readonly property string setupKind: root.helperOutdated ? "outdated" : Model.setupState(root.loadError, root.loadErrorKind)
@@ -393,6 +394,25 @@ Item {
     })
   }
 
+  // The uninstaller that came with this plugin, beside install.sh.
+  readonly property string uninstallScript: Model.localPath(Qt.resolvedUrl("../uninstall.sh"))
+
+  // Asks before uninstalling. Cancel is selected first, so Enter never uninstalls by accident.
+  function askUninstall() {
+    uninstallConfirm.selectedIndex = 0
+    root.uninstallOpen = true
+  }
+
+  // Runs the uninstaller in Omarchy's floating terminal, where its plan and the sudo prompt
+  // stay in plain sight. The overlay lets go of the mouse and closes: the plugin is removed.
+  function uninstall() {
+    root.uninstallOpen = false
+    saveTimer.stop()
+    server.stop()
+    Util.execArgv(Model.uninstallArgv(root.uninstallScript))
+    root.close()
+  }
+
   // Accepts editing this untested mouse, then saves the changes that were waiting.
   function acceptUntested() {
     root.acceptOpen = false
@@ -574,6 +594,10 @@ Item {
         focus: true
 
         Keys.onPressed: function(event) {
+          if (uninstallConfirm.handleKey(event)) {
+            event.accepted = true
+            return
+          }
           var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
           if (event.key === Qt.Key_Escape) {
             if (root.selectedSlot >= 0) root.selectedSlot = -1
@@ -726,7 +750,33 @@ Item {
               opacity: 0.55
               text: root.info ? Model.deviceSummary(root.info) : ""
             }
+
+            // Omarchy has no uninstall hook for plugins, so Omalogi offers its own. Quiet,
+            // and always reachable, including from the setup screen.
+            Button {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Uninstall"
+              opacity: hot ? 1 : 0.55
+              fontSize: Style.font.caption
+              foreground: Color.menu.text
+              fontFamily: Style.font.menuFamily
+              onClicked: root.askUninstall()
+            }
           }
+        }
+
+        ConfirmDialog {
+          id: uninstallConfirm
+          anchors.fill: parent
+          z: 110
+          opened: root.uninstallOpen
+          message: "Uninstall Omalogi? The helper, its daemon, the udev rule and this plugin are removed. Your mouse keeps its profiles, and your backups are kept."
+          confirmText: "Uninstall"
+          background: Color.menu.background
+          foreground: Color.menu.text
+          fontFamily: Style.font.menuFamily
+          onCanceled: root.uninstallOpen = false
+          onConfirmed: root.uninstall()
         }
 
         // ---- Untested mouse: accept once before the first write -------------

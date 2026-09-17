@@ -40,6 +40,16 @@ function helperInstallArgv(installScript) {
   return ["omarchy-launch-floating-terminal-with-presentation", helperInstallCommand(installScript)]
 }
 
+// The plugin's uninstaller, told the overlay already asked, in Omarchy's floating terminal
+// so the plan and the sudo prompt stay in plain sight.
+function uninstallCommand(uninstallScript) {
+  return "bash " + shellQuote(uninstallScript) + " --yes"
+}
+
+function uninstallArgv(uninstallScript) {
+  return ["omarchy-launch-floating-terminal-with-presentation", uninstallCommand(uninstallScript)]
+}
+
 // A local path from a file: URL, e.g. Qt.resolvedUrl("../install.sh").
 function localPath(url) {
   return decodeURIComponent(String(url).replace(/^file:\/\//, ""))

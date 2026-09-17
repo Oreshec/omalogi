@@ -11,7 +11,8 @@
 # Kept: the profiles on your mouse (uninstalling changes nothing on it), backups and
 # acceptances in ~/.local/state/omalogi, and rules in ~/.config/omalogi.
 #
-# --dry-run shows the plan without changing anything. OMALOGI_BIN_DIR matches install.sh.
+# --dry-run shows the plan without changing anything; --yes skips the question, for the
+# overlay's Uninstall, which asks first. OMALOGI_BIN_DIR matches install.sh.
 set -euo pipefail
 
 PLUGIN_ID=io.github.elberacasa.omalogi
@@ -27,11 +28,14 @@ say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 die() { printf 'omalogi uninstall: %s\n' "$*" >&2; exit 1; }
 
 dry_run=false
-case "${1:-}" in
-  "") ;;
-  --dry-run) dry_run=true ;;
-  *) die "unknown option $1; the only option is --dry-run" ;;
-esac
+assume_yes=false
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) dry_run=true ;;
+    --yes) assume_yes=true ;;
+    *) die "unknown option $arg; use --dry-run or --yes" ;;
+  esac
+done
 
 [ "$(id -u)" -ne 0 ] || die "run this as your user, not root; it asks for sudo once, for the udev rule"
 
@@ -87,7 +91,9 @@ if $dry_run; then
 fi
 
 answer=n
-if { exec 3</dev/tty; } 2>/dev/null; then
+if $assume_yes; then
+  answer=y
+elif { exec 3</dev/tty; } 2>/dev/null; then
   printf '\033[1m==>\033[0m Uninstall? [y/N] ' >/dev/tty
   read -r answer <&3 || answer=n
   exec 3<&-

@@ -635,6 +635,9 @@ test("the setup screen names the one step that reaches the mouse", () => {
   assert.equal(Model.helperInstallCommand("/tmp/it's here/install.sh"), "bash '/tmp/it'\\''s here/install.sh'")
   assert.deepEqual(plain(Model.helperInstallArgv("/p/install.sh")),
     ["omarchy-launch-floating-terminal-with-presentation", "bash '/p/install.sh'"])
+  assert.deepEqual(plain(Model.uninstallArgv("/tmp/it's here/uninstall.sh")),
+    ["omarchy-launch-floating-terminal-with-presentation", "bash '/tmp/it'\\''s here/uninstall.sh' --yes"],
+    "the overlay asks first, so the script does not ask again")
   assert.equal(Model.localPath("file:///home/me/My%20Plugins/install.sh"), "/home/me/My Plugins/install.sh")
   assert.doesNotMatch(Model.helperInstallCommand("/p/install.sh"), /curl|wget/, "never a download piped to a shell")
   assert.match(Model.PLUGIN_ADD_COMMAND, /^omarchy plugin add https:\/\/github\.com\/elberacasa\/omalogi --enable$/)
