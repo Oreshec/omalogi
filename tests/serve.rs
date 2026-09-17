@@ -13,19 +13,20 @@ use serde_json::{Value, json};
 use support::{FakeG502x, fixture_sectors};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-fn test_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("omalogi-serve-{}", std::process::id()))
+/// A directory for one test; tests run in parallel, so none may share one.
+fn test_dir(test: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("omalogi-serve-{}-{test}", std::process::id()))
 }
 
-fn backup_path(_device: &str) -> Result<PathBuf, Box<dyn Error>> {
+fn backup_in(test: &str) -> Result<PathBuf, Box<dyn Error>> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    Ok(test_dir().join(format!("backup-{n}.json")))
+    Ok(test_dir(test).join(format!("backup-{n}.json")))
 }
 
 #[tokio::test]
 async fn edits_undo_and_activation_over_json_lines() {
-    let dir = test_dir();
+    let dir = test_dir("edits");
     let _ = std::fs::remove_dir_all(&dir);
     let device = FakeG502x::new();
     let state = device.state();
@@ -37,7 +38,9 @@ async fn edits_undo_and_activation_over_json_lines() {
     )
     .await
     .expect("session starts");
-    let server = serve::Server::new(session, Some(dir.join("device.lock")), backup_path);
+    let server = serve::Server::new(session, Some(dir.join("device.lock")), |_| {
+        backup_in("edits")
+    });
 
     let (client, server_side) = tokio::io::duplex(1 << 20);
     let (server_read, server_write) = tokio::io::split(server_side);
@@ -158,7 +161,7 @@ async fn edits_undo_and_activation_over_json_lines() {
 
 #[tokio::test]
 async fn a_damaged_directory_is_reported_and_repaired() {
-    let dir = test_dir().join("repair");
+    let dir = test_dir("repair");
     let _ = std::fs::remove_dir_all(&dir);
     let device = FakeG502x::new();
     let state = device.state();
@@ -176,7 +179,9 @@ async fn a_damaged_directory_is_reported_and_repaired() {
     )
     .await
     .expect("session starts");
-    let server = serve::Server::new(session, Some(dir.join("device.lock")), backup_path);
+    let server = serve::Server::new(session, Some(dir.join("device.lock")), |_| {
+        backup_in("repair")
+    });
 
     let (client, server_side) = tokio::io::duplex(1 << 20);
     let (server_read, server_write) = tokio::io::split(server_side);
