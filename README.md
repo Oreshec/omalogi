@@ -22,8 +22,9 @@ Untested mice use the same onboard memory family as the G502 X, which libratbag 
 writes with one layout, so Omalogi can read and edit them. Nobody has checked them with
 Omalogi yet, though: the first time you edit one, Omalogi asks you to accept that
 (`omalogi accept-untested`, or a button in the overlay). Every write is still backed up,
-read back and verified. Then please use **Report how it went** in the overlay, so the
-model can become verified.
+read back and verified. Then please use **Help verify it** in the overlay: it opens a
+Mouse report for your model, where you can report how it went or claim the model and run
+the 15-minute self-test that makes it verified for everyone.
 
 <details>
 <summary>Untested wired models</summary>
@@ -51,7 +52,8 @@ plugged in with its cable is used first.
 
 Mice without onboard profiles, such as the MX series, are not supported: for those,
 see [OpenLogi](https://github.com/AprilNEA/OpenLogi). To help verify a mouse, see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[#15](https://github.com/elberacasa/omalogi/issues/15), which lists every model and who
+is verifying it.
 
 ## Features
 

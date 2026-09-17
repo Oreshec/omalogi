@@ -639,13 +639,20 @@ test("untested mice get a badge, one acceptance and a report link", () => {
   assert.equal(Model.support({ support: untested }), untested)
   assert.equal(Model.supportBadge(verified), null)
   assert.equal(Model.supportBadge(untested).text, "Untested")
+  assert.equal(Model.supportBadge(untested).action, "Help verify it")
   assert.match(Model.supportBadge(untested).detail, /G502 Hero/)
   assert.equal(Model.supportBadge(unreadable).text, "Not supported yet")
+  assert.equal(Model.supportBadge(unreadable).action, "Report it")
   assert.equal(Model.needsAcceptance(verified), false)
   assert.equal(Model.needsAcceptance(untested), true)
   assert.equal(Model.needsAcceptance({ ...untested, accepted: true }), false)
   assert.equal(Model.needsAcceptance(unreadable), false, "nothing to accept when it cannot be edited")
-  const url = Model.reportUrl({ name: "G502 Hero", vendor_id: 0x046d, product_id: 0xc08b }, untested)
-  assert.equal(url, "https://github.com/elberacasa/omalogi/issues/new?template=device.yml&title=%5BDevice%5D%3A%20G502%20Hero&model=Logitech%20G502%20Hero&usb=046d%3Ac08b")
+  const hero = {
+    name: "G502 Hero", vendor_id: 0x046d, product_id: 0xc08b,
+    firmware: [{ kind: "Bootloader", version: "BOT 81.00.B0002", active: false }, { kind: "MainApplication", version: "U1 27.03.B0010", active: true }]
+  }
+  const url = Model.reportUrl(hero, untested)
+  assert.equal(url, "https://github.com/elberacasa/omalogi/issues/new?template=mouse.yml&title=%5BMouse%5D%3A%20G502%20Hero&model=Logitech%20G502%20Hero&device_id=046d%3Ac08b&firmware=U1%2027.03.B0010")
+  assert.doesNotMatch(Model.reportUrl({ ...hero, firmware: [] }, untested), /firmware=/, "no firmware line when none is active")
   assert.doesNotMatch(url, /unit|serial|backup/i)
 })

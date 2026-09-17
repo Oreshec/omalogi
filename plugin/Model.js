@@ -74,11 +74,13 @@ function supportBadge(support) {
   if (!support.editable) {
     return {
       text: "Not supported yet",
+      action: "Report it",
       detail: "Omalogi cannot read this mouse's profile layout (format " + support.profile_format + ") yet."
     }
   }
   return {
     text: "Untested",
+    action: "Help verify it",
     detail: "Omalogi has not been tested on the " + support.name + " yet. Every change is backed up and verified."
   }
 }
@@ -92,16 +94,18 @@ function hex4(value) {
   return ("0000" + Number(value || 0).toString(16)).slice(-4)
 }
 
-// The new-device issue form, prefilled with the model and USB id only: never the unit ID,
-// firmware serials or backups.
+// The Mouse report form, prefilled with the model, its product id and active firmware
+// version only: never the unit ID, serials or backups.
 function reportUrl(info, support) {
   var name = support && support.name ? support.name : (info && info.name) || "Logitech mouse"
   var fields = {
-    template: "device.yml",
-    title: "[Device]: " + name,
+    template: "mouse.yml",
+    title: "[Mouse]: " + name,
     model: "Logitech " + name,
-    usb: hex4(info && info.vendor_id) + ":" + hex4(info && info.product_id)
+    device_id: hex4(info && info.vendor_id) + ":" + hex4(info && info.product_id)
   }
+  var firmware = info ? activeFirmware(info) : ""
+  if (firmware !== "") fields.firmware = firmware
   return "https://github.com/elberacasa/omalogi/issues/new?" + Object.keys(fields).map(function(key) {
     return key + "=" + encodeURIComponent(fields[key])
   }).join("&")

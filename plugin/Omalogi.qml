@@ -657,7 +657,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacing.md
 
-            // An untested mouse says so, and opens the report form for how it went.
+            // An untested mouse says so, and opens the Mouse report form to verify it or report how it went.
             Rectangle {
               anchors.verticalCenter: parent.verticalCenter
               visible: root.supportBadge !== null
@@ -671,7 +671,7 @@ Item {
               Label {
                 id: badgeLabel
                 anchors.centerIn: parent
-                text: root.supportBadge ? root.supportBadge.text + "  ·  Report how it went" : ""
+                text: root.supportBadge ? root.supportBadge.text + "  ·  " + root.supportBadge.action : ""
                 color: Color.accent
                 font.pixelSize: Style.font.caption
               }
