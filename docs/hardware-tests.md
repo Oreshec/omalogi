@@ -224,6 +224,34 @@ stages such as 1600,800 are kept in that order (the overlay always sorts them).
 
 Result: **pass**.
 
+## 2026-09-17: a profile directory that fails its checksum (#16)
+
+Reproduced the damage reported in #16 and recovered from it with the release build. The
+daemon was stopped for the test and started again afterwards. A scratch script, holding
+the device lock, wrote sector `0000` with its entries unchanged, byte 22 set to `0x01`
+and the checksum `ffff`, only after checking that the sector matched a fresh backup.
+
+`memoryWriteEnd` answered with HID++ error `0x04`, yet the bytes were stored: a fresh
+backup showed sector `0000` differing from the original at bytes 22, 253 and 254 only,
+and every other sector identical. The firmware checks the checksum when a write ends
+but keeps a sector that fails it, so a writer that ignores that error leaves exactly
+this state, as does an interrupted write.
+
+| Step | Result |
+|---|---|
+| `omalogi profiles`, `profiles edit 3 --rate 500 --dry-run` | refused, naming `omalogi profiles repair` |
+| `omalogi backup` | 9 sectors saved, `0000` flagged in `invalid_checksums`, with a warning |
+| `omalogi profiles repair --dry-run` | listed profiles 1–3 on, 4–5 off; nothing written |
+| `omalogi profiles repair` | backup saved first; directory rewritten and verified |
+| Fresh backup | all 9 sectors byte-identical to the original, none flagged |
+| Damage again, `omalogi restore <original> --dry-run` | would write sector `0000` only |
+| `omalogi restore <original>` | restored and verified; the pre-restore backup flags `0000` |
+| `omalogi restore <pre-restore backup> --dry-run` | refused: sector `0000` was saved with an invalid checksum |
+| Final backup | all 9 sectors byte-identical to the original |
+
+Result: **pass**. The mouse ended exactly as it started, and the daemon was running again.
+The overlay's Repair card was checked with the model tests only.
+
 ## Observations
 
 - 2026-09-16: during the in-use phase of the self-test, one `omalogi dpi` read right after
