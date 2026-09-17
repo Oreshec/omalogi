@@ -1,0 +1,60 @@
+name: Mouse report
+description: Verify an untested mouse, report how one works, or ask for a model Omalogi does not list.
+title: "[Mouse]: "
+labels: [verify-a-mouse]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Each mouse model has one issue, and [#15](https://github.com/elberacasa/omalogi/issues/15) lists them all. If your model already has an open issue, add to that one instead; a duplicate is closed automatically and points you there.
+
+        Do not attach backups or `omalogi backup` output. They contain the mouse's unit ID.
+  - type: dropdown
+    id: goal
+    attributes:
+      label: What would you like to do?
+      options:
+        - Verify it (I will run the 15-minute self-test)
+        - Report how it works
+        - Ask for a model Omalogi does not list
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Mouse model
+      placeholder: Logitech G305
+    validations:
+      required: true
+  - type: input
+    id: device_id
+    attributes:
+      label: USB id or wireless id
+      description: "The product id from `omalogi --json info`, or from `lsusb | grep -i logitech` for a mouse Omalogi does not find."
+      placeholder: 046d:c08b
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - Wired
+        - Through a receiver (LIGHTSPEED, Bolt or Unifying)
+        - Bluetooth
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      description: "The active firmware from `omalogi info`, e.g. U1 60.00.B0009."
+  - type: textarea
+    id: results
+    attributes:
+      label: How did it go?
+      description: What worked, what did not, and any error messages. For a verification, the self-test summary goes here or in the pull request.
+      placeholder: |
+        Reading profiles: …
+        Changing DPI levels: …
+        Button assignments: …

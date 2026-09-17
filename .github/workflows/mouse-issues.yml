@@ -1,0 +1,28 @@
+name: Mouse issues
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'verify-a-mouse') &&
+      (github.event_name == 'issues' || startsWith(github.event.comment.body, '/'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const issues = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/mouse-issues.js`)
+            await (context.eventName === "issues" ? issues.run : issues.claim)({ github, context })

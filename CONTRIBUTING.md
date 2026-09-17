@@ -63,6 +63,23 @@ new binary: `systemctl --user restart omalogi`.
   profile sectors are checked byte by byte and the hardware tests pass on a real one.
 - **Never** write factory sectors or firmware.
 
+## Verifying a mouse you own
+
+Each untested model has one issue, all listed in
+[#15](https://github.com/elberacasa/omalogi/issues/15), and the issue's assignee is the
+person verifying it.
+
+1. Find your model's open issue, or open a **Mouse report** and choose "Verify it"
+   (the overlay's **Help verify it** opens one filled in).
+2. Comment `/claim` on an existing issue to be assigned; a new "Verify it" report is
+   assigned to you automatically. `/unclaim` gives the model back, and a claim with no
+   update for 30 days is released.
+3. Follow [docs/agents/verify-my-mouse.md](docs/agents/verify-my-mouse.md), with your coding
+   agent or by hand, and open the pull request with `Closes #<issue>`.
+
+A second report for a model that already has an open issue is closed and pointed at it,
+so everything about a model stays in one place.
+
 ## Adding a device
 
 1. Dump it read-only with `research/tools/probe_readonly.py` (grant access to its hidraw

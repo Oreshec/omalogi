@@ -41,9 +41,9 @@ jobs:
       - name: Manifest is valid JSON
         run: jq -e '.schemaVersion == 1 and .entryPoints.overlay' manifest.json
 
-      - name: Model tests
+      - name: Model and issue triage tests
         # A glob, not the directory: Node before 23 runs a directory argument as a file.
-        run: node --test "plugin/tests/**/*.test.js"
+        run: node --test "plugin/tests/**/*.test.js" ".github/scripts/*.test.js"
 
   installer:
     runs-on: ubuntu-latest
