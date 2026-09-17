@@ -11,7 +11,7 @@ Item {
   readonly property bool running: process.running
   property int inFlight: 0
   property int nextId: 1
-  // Request id -> function(ok, resultOrError).
+  // Request id -> function(ok, resultOrError, kind); `kind` names errors the overlay acts on.
   property var callbacks: ({})
   // Lines written before the process has started.
   property var queue: []
@@ -38,12 +38,12 @@ Item {
     if (process.running) process.running = false
   }
 
-  function settle(id, ok, value) {
+  function settle(id, ok, value, kind) {
     var callback = server.callbacks[id]
     if (callback === undefined) return
     delete server.callbacks[id]
     server.inFlight = Math.max(0, server.inFlight - 1)
-    callback(ok, value)
+    callback(ok, value, kind || "")
   }
 
   function failAll(message) {
@@ -70,7 +70,7 @@ Item {
         var reply = Model.parseJson(line)
         if (reply === null || reply.id === null || reply.id === undefined) return
         var ok = reply.ok === true
-        server.settle(reply.id, ok, ok ? reply.result : String(reply.error))
+        server.settle(reply.id, ok, ok ? reply.result : String(reply.error), reply.kind || "")
       }
     }
 

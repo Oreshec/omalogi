@@ -27,6 +27,8 @@ Item {
   // `omalogi picture`: the mouse's picture with button positions, or null.
   property var picture: null
   property string loadError: ""
+  // The helper's `kind` for loadError, when it names one (see Model.setupState).
+  property string loadErrorKind: ""
   // The helper answered but is older than this plugin needs.
   property bool helperOutdated: false
   // How far the connected mouse is verified (Model.support); untested mice ask once
@@ -35,7 +37,7 @@ Item {
   property bool acceptOpen: false
   readonly property var supportBadge: Model.supportBadge(root.support)
   // What stands between the plugin and the mouse (see Model.setupState), or "".
-  readonly property string setupKind: root.helperOutdated ? "outdated" : Model.setupState(root.loadError)
+  readonly property string setupKind: root.helperOutdated ? "outdated" : Model.setupState(root.loadError, root.loadErrorKind)
   property string notice: ""
   property bool noticeIsError: false
   property int cursor: 0
@@ -138,10 +140,11 @@ Item {
     if (root.loading) return
     root.loading = true
     root.loadError = ""
-    server.request({ cmd: "state" }, function(ok, result) {
+    root.loadErrorKind = ""
+    server.request({ cmd: "state" }, function(ok, result, kind) {
       root.loading = false
       if (!ok) {
-        root.failLoad(result)
+        root.failLoad(result, kind)
         return
       }
       var first = root.onboard === null
@@ -159,6 +162,7 @@ Item {
   function retry() {
     server.stop()
     root.loadError = ""
+    root.loadErrorKind = ""
     root.refresh()
   }
 
@@ -344,9 +348,13 @@ Item {
   }
 
   // A failed load replaces the view until data exists; afterwards it only shows in the footer.
-  function failLoad(message) {
-    if (root.ready) root.say(message, true)
-    else root.loadError = message
+  function failLoad(message, kind) {
+    if (root.ready) {
+      root.say(message, true)
+      return
+    }
+    root.loadError = message
+    root.loadErrorKind = kind || ""
   }
 
   // The installer that came with this plugin, beside manifest.json.
@@ -357,6 +365,32 @@ Item {
   function installHelper() {
     Util.execArgv(Model.helperInstallArgv(root.installScript))
     root.say("Finish the installer in the terminal, then choose Try again.", false)
+  }
+
+  // The setup card's one step: repairing the profile list happens here, everything else
+  // in the installer.
+  function runSetupAction() {
+    if (root.setupKind === "directory") root.repairDirectory()
+    else root.installHelper()
+  }
+
+  // Rebuilds a damaged profile directory, then reads the mouse again. A directory the
+  // helper will not rebuild keeps the card, with the reason and the way to restore.
+  function repairDirectory() {
+    if (root.loading) return
+    root.loading = true
+    server.request({ cmd: "repair_directory" }, function(ok, result, kind) {
+      root.loading = false
+      if (!ok) {
+        root.loadError = result
+        root.loadErrorKind = kind || ""
+        return
+      }
+      root.loadError = ""
+      root.loadErrorKind = ""
+      root.refresh()
+      root.say("Repaired the profile list. Backup saved to " + result.backup, false)
+    })
   }
 
   // Accepts editing this untested mouse, then saves the changes that were waiting.
@@ -910,7 +944,7 @@ Item {
                 text: setupCard.copy.action
                 bordered: true
                 foreground: Color.accent
-                onClicked: root.installHelper()
+                onClicked: root.runSetupAction()
               }
 
               Button {
@@ -923,7 +957,7 @@ Item {
 
             Label {
               width: parent.width
-              visible: setupCard.copy.action !== ""
+              visible: setupCard.copy.installer
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.WrapAnywhere
               opacity: 0.45

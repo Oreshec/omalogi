@@ -46,13 +46,16 @@ function localPath(url) {
 }
 
 // The oldest `omalogi serve` request format this plugin works with.
-var REQUIRED_PROTOCOL = 2
+var REQUIRED_PROTOCOL = 3
 
 // What stops Omalogi reaching the mouse, from a failed load's message: "helper" (not
 // installed), "access" (no permission), "device" (no mouse), or "error".
-function setupState(message) {
+function setupState(message, kind) {
+  if (kind === "directory_checksum") return "directory"
   var text = String(message || "")
   if (text === "") return ""
+  // Helpers before protocol 3 refuse a damaged profile directory with no way to repair it.
+  if (text.indexOf("profile directory has an invalid checksum") !== -1) return "outdated"
   if (text.indexOf("not installed or not on PATH") !== -1) return "helper"
   if (text.indexOf("permission denied opening") !== -1) return "access"
   // Helpers from 0.2 say "mouse"; older ones said "device".
@@ -125,28 +128,39 @@ function setupCopy(kind, message) {
     return {
       title: "Install Omalogi's helper",
       body: "To talk to your mouse, the plugin needs its helper: the omalogi command and a udev rule that lets your user reach the mouse. The installer checks its download, asks for your password once, and asks before adding the bar indicator and automatic profile switching.",
-      action: "Install helper"
+      action: "Install helper",
+      installer: true
     }
   case "access":
     return {
       title: "Allow access to your mouse",
       body: "The helper is installed but cannot open the mouse. The installer adds Omalogi's udev rule, which gives your login session access to supported Logitech mice and their receivers, and nothing else.",
-      action: "Allow access"
+      action: "Allow access",
+      installer: true
     }
   case "outdated":
     return {
       title: "Update Omalogi's helper",
       body: "This version of the plugin needs a newer helper. The installer updates it in place.",
-      action: "Update helper"
+      action: "Update helper",
+      installer: true
+    }
+  case "directory":
+    return {
+      title: "Repair the profile list on your mouse",
+      body: "The list of profiles stored on your mouse fails its checksum, so Omalogi is not changing anything. Repair first checks that every profile it lists is intact, backs up the mouse's memory, then rewrites only that list and verifies it.",
+      action: "Repair",
+      installer: false
     }
   case "device":
     return {
       title: "Plug in your mouse",
       body: "Connect a Logitech G-series mouse over USB, or turn on a wireless one paired to its receiver, then try again.",
-      action: ""
+      action: "",
+      installer: false
     }
   default:
-    return { title: "Omalogi could not read your mouse", body: String(message || ""), action: "" }
+    return { title: "Omalogi could not read your mouse", body: String(message || ""), action: "", installer: false }
   }
 }
 

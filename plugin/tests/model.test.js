@@ -611,14 +611,24 @@ test("the setup screen names the one step that reaches the mouse", () => {
     "helpers before 0.2 said device"
   )
   assert.equal(Model.setupState("device request failed"), "error")
+  assert.equal(Model.setupState("the onboard profile directory's checksum does not match", "directory_checksum"), "directory")
+  assert.equal(
+    Model.setupState("the onboard profile directory has an invalid checksum; the device may never have had profiles written"),
+    "outdated",
+    "helpers before protocol 3 cannot repair the directory"
+  )
   assert.equal(Model.setupCopy("helper").action, "Install helper")
   assert.equal(Model.setupCopy("access").action, "Allow access")
   assert.equal(Model.setupCopy("outdated").action, "Update helper")
   assert.equal(Model.setupCopy("device").action, "")
+  assert.equal(Model.setupCopy("directory").action, "Repair")
+  assert.equal(Model.setupCopy("directory").installer, false, "repairing runs no installer")
+  assert.equal(Model.setupCopy("outdated").installer, true)
   assert.equal(Model.setupCopy("error", "device request failed").body, "device request failed")
   assert.equal(Model.helperOutdated({ info: {}, onboard: {} }), true, "helpers that do not report a protocol speak 1, older than this plugin needs")
   assert.equal(Model.helperOutdated({ helper: { version: "0.1.9", protocol: 1 } }), true)
-  assert.equal(Model.helperOutdated({ helper: { version: "0.2.0", protocol: 2 } }), false)
+  assert.equal(Model.helperOutdated({ helper: { version: "0.2.0", protocol: 2 } }), true)
+  assert.equal(Model.helperOutdated({ helper: { version: "0.3.0", protocol: 3 } }), false)
   assert.equal(Model.helperOutdated({ helper: { version: "0.0.1", protocol: 0.5 } }), true)
   assert.equal(Model.helperInstallCommand("/home/me/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh"),
     "bash '/home/me/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh'")
