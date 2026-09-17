@@ -27,6 +27,7 @@ pub const PLUGIN_FILES: &[(&str, &str)] = &[
     ("manifest.json", include_str!("../manifest.json")),
     // The overlay runs it to install or update the helper.
     ("install.sh", include_str!("../install.sh")),
+    ("uninstall.sh", include_str!("../uninstall.sh")),
     ("plugin/Omalogi.qml", include_str!("../plugin/Omalogi.qml")),
     (
         "plugin/OmalogiCommand.qml",

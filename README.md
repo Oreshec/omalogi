@@ -316,17 +316,17 @@ not have yet, and the Omarchy integration.
 
 ## Uninstall
 
-Remove the plugin, then its helper:
+The uninstaller reverses the installer. It shows exactly what it will remove and asks
+first; `--dry-run` only shows the plan:
 
 ```sh
-omarchy plugin remove io.github.elberacasa.omalogi
-systemctl --user disable --now omalogi.service
-rm -f ~/.config/systemd/user/omalogi.service ~/.local/bin/omalogi
-sudo rm -f /etc/udev/rules.d/70-omalogi.rules && sudo udevadm control --reload-rules
+bash ~/.config/omarchy/plugins/io.github.elberacasa.omalogi/uninstall.sh
 ```
 
-`omarchy plugin remove` unloads Omalogi and takes it off the bar. If you installed the
-helper from the AUR, run `sudo pacman -R omalogi` instead of the last two lines.
+It stops the daemon and removes its user unit, the helper in `~/.local/bin` and the udev
+rule (sudo), then runs `omarchy plugin remove io.github.elberacasa.omalogi`, which unloads
+Omalogi and takes it off the bar. If you installed the helper from the AUR, it leaves the
+package alone; remove it with `sudo pacman -R omalogi`.
 
 Your mouse keeps its onboard profiles: uninstalling changes nothing on it. Backups in
 `~/.local/state/omalogi/backups/` and rules in `~/.config/omalogi/` are kept; delete them
