@@ -5,8 +5,14 @@ updates:
     schedule:
       interval: weekly
     groups:
+      # OpenLogi's crates only work at matching versions, so they move in one pull
+      # request, apart from the rest: a bump that needs code changes then never holds
+      # up routine updates.
+      openlogi:
+        patterns: ["openlogi-*"]
       rust:
         patterns: ["*"]
+        exclude-patterns: ["openlogi-*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
