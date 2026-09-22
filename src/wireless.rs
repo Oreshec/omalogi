@@ -51,7 +51,7 @@ pub fn known_mice(inventories: &[DeviceInventory]) -> Vec<WirelessMouse> {
                         .find(|model| model.product_id == id)
                         .copied()
                 })?;
-                let route = DeviceRoute::device_route_for(inventory, device.slot)?;
+                let route = DeviceRoute::for_slot(inventory, device.slot)?;
                 if matches!(route, DeviceRoute::Direct { .. }) {
                     return None;
                 }

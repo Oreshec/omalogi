@@ -258,9 +258,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.6"
+version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca"
+checksum = "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -268,9 +268,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.6"
+version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889"
+checksum = "ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d"
 dependencies = [
  "anstream",
  "anstyle",
@@ -280,9 +280,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.6.4"
+version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d012d2b9d65aca7f18f4d9878a045bc17899bba951561ba5ec3c2ba1eed9a061"
+checksum = "f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -563,7 +563,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1259,9 +1259,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-core"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5275490dbeb5d7647230de868a014cce1e027aecb3f3d06d2e245bf60a383ca4"
+checksum = "1412836ff0fd9731a3b8759920fe3a8bf1967673b77743ae2b472b032357dd16"
 dependencies = [
  "atomic-write-file",
  "az",
@@ -1276,6 +1276,7 @@ dependencies = [
  "strum",
  "sys-locale",
  "thiserror 2.0.20",
+ "tokio",
  "toml 0.8.23",
  "toml_edit 0.22.27",
  "tracing",
@@ -1283,14 +1284,15 @@ dependencies = [
 
 [[package]]
 name = "openlogi-device"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "896d94f7a1660386055f7c0c839e1c78076f242ee377f736564beb2c219b2fee"
+checksum = "a0c2ee91dcc2d1c967bdc6d83a1c87837577fc116fb4ae929c341a3bd76a150a"
 dependencies = [
  "futures-concurrency",
  "futures-lite",
  "openlogi-core",
  "openlogi-device-registry",
+ "openlogi-fixture",
  "openlogi-hidpp",
  "serde",
  "thiserror 2.0.20",
@@ -1300,15 +1302,27 @@ dependencies = [
 
 [[package]]
 name = "openlogi-device-registry"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1309638913b5335a0fb8a5a3886365d0eadbb9232241b3fe0ed609fb95c073"
+checksum = "838027965b947a538f14102d830b679caa14af1c1eebf2abdaf01fe718a873b2"
+
+[[package]]
+name = "openlogi-fixture"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc204335daa2149a603e134bf97735faf7beb62448ce2100c451812bddf64754"
+dependencies = [
+ "openlogi-core",
+ "serde",
+ "serde_ignored",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "openlogi-hid"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72a431562d29f3652e53c4b4c86213d9c0824edf7b015821bc061343c7d82715"
+checksum = "22b4ed28fbca91e1e54ed9d691cb1db425579e715eb57c777c60076fa3d0534f"
 dependencies = [
  "atomic-write-file",
  "futures-concurrency",
@@ -1317,6 +1331,7 @@ dependencies = [
  "openlogi-async-hid",
  "openlogi-core",
  "openlogi-device",
+ "openlogi-fixture",
  "openlogi-hidpp",
  "serde",
  "serde_json",
@@ -1328,9 +1343,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-hidpp"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93b3927237af907941427100962082d3f04a7102c1b03502a7ba19bbb09c1581"
+checksum = "23def7b200b498000189aa97705ee1f7c14d450ff2c28b7daa54a15d8eda63c7"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -1350,9 +1365,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-hidpp-derive"
-version = "0.8.3"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35d40345e40ec3cf287b8278bdf34302613815080fade8f0c3163ff6c729439c"
+checksum = "707167fbfb3d189a6973a1f7a564c0208fa63e7e672ea964c086512a11db572e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1598,7 +1613,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1708,6 +1723,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "serde_ignored"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "115dffd5f3853e06e746965a20dcbae6ee747ae30b543d91b0e089668bb07798"
+dependencies = [
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -2232,7 +2257,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
