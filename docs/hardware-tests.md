@@ -252,6 +252,22 @@ this state, as does an interrupted write.
 Result: **pass**. The mouse ended exactly as it started, and the daemon was running again.
 The overlay's Repair card was checked with the model tests only.
 
+## 2026-09-21: OpenLogi 0.8.6
+
+OpenLogi 0.8.6 reworks how `openlogi-hidpp` matches replies to requests: a reply that
+arrives after its request timed out is now held back for up to a second and discarded,
+instead of being taken as the answer to the next request with the same header. Every
+read and write Omalogi makes goes through that code, so the upgrade was checked on the
+G502 X before merging, with the daemon running.
+
+| Check | Result |
+|---|---|
+| `backup`, `--json info`, `--json profiles` with the 0.8.3 helper and the 0.8.6 build | identical: all 9 sectors, device info and every profile |
+| `scripts/hardware-selftest.py --profile 3` | 1979 checks passed, 0 failed, in 30 s; `apply` median 271 ms, as before |
+| Fresh backup after the self-test | all 9 sectors byte-identical to the backup before it |
+
+Result: **pass**.
+
 ## Observations
 
 - 2026-09-16: during the in-use phase of the self-test, one `omalogi dpi` read right after

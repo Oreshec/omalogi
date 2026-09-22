@@ -5,6 +5,15 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Changed
+
+- OpenLogi 0.8.6 (from 0.8.3). Its HID++ layer no longer takes a reply that arrives
+  after its request timed out as the answer to the next request; the reply is held back
+  briefly and discarded. Checked on a G502 X: reads identical, full self-test passing.
+  clap 4.6.7.
+- Dependabot keeps OpenLogi's crates in their own group, so they are always upgraded
+  together.
+
 ## [0.3.3] - 2026-09-17
 
 ### Fixed
