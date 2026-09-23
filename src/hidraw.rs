@@ -44,11 +44,12 @@ const fn untested(product_id: u16, name: &'static str) -> SupportedDevice {
     }
 }
 
-/// Wired G-series mice with HID++ 2.0 onboard profiles. The verified G502 X comes first;
-/// the untested models and their USB ids come from libratbag's device database
-/// (`data/devices/*.device`, MIT).
+/// Wired G-series mice with HID++ 2.0 onboard profiles. The verified mice come first:
+/// the G502 X, then the G502 Hero. The untested models and their USB ids come from
+/// libratbag's device database (`data/devices/*.device`, MIT).
 pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[
     verified(0xC099, "G502 X"),
+    verified(0xC08B, "G502 Hero"),
     untested(0xC07D, "G502 Proteus Core"),
     untested(0xC07E, "G402"),
     untested(0xC07F, "G302"),
@@ -61,7 +62,6 @@ pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[
     untested(0xC086, "G903"),
     untested(0xC087, "G703"),
     untested(0xC088, "G Pro Wireless"),
-    untested(0xC08B, "G502 Hero"),
     untested(0xC08C, "G Pro"),
     untested(0xC08D, "G502 Hero Wireless"),
     untested(0xC08E, "MX518"),
@@ -406,7 +406,7 @@ mod tests {
         for (node, uevent) in [
             // A Lightspeed receiver: not a mouse Omalogi opens directly.
             ("hidraw3", "HID_ID=0003:0000046D:0000C539\n"),
-            ("hidraw4", "HID_ID=0003:0000046D:0000C08B\n"),
+            ("hidraw4", "HID_ID=0003:0000046D:0000C07D\n"),
         ] {
             let dir = root.join(node).join("device");
             fs::create_dir_all(&dir).expect("create fake sysfs");
@@ -419,7 +419,7 @@ mod tests {
         fs::remove_dir_all(&root).expect("clean up fake sysfs");
 
         assert_eq!(found.path, Path::new("/dev/hidraw4"));
-        assert_eq!(found.device.name, "G502 Hero");
+        assert_eq!(found.device.name, "G502 Proteus Core");
         assert!(!found.device.verified);
     }
 
@@ -427,7 +427,9 @@ mod tests {
     fn the_verified_mouse_is_listed_first_and_ids_are_unique() {
         assert!(SUPPORTED_DEVICES[0].verified);
         assert_eq!(SUPPORTED_DEVICES[0].product_id, 0xC099);
-        assert_eq!(SUPPORTED_DEVICES.iter().filter(|d| d.verified).count(), 1);
+        assert_eq!(SUPPORTED_DEVICES.iter().filter(|d| d.verified).count(), 2);
+        assert_eq!(SUPPORTED_DEVICES[1].product_id, 0xC08B);
+        assert!(SUPPORTED_DEVICES[1].verified);
         let mut ids: Vec<u16> = SUPPORTED_DEVICES.iter().map(|d| d.product_id).collect();
         ids.sort_unstable();
         ids.dedup();

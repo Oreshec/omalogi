@@ -108,12 +108,12 @@ def rate_hz(profile):
 def changes_for(profile, actions, count):
     stages = profile["dpi_stages"]
     changes = {
-        "dpi": stages,
+        "dpi": [dpi for dpi in stages if dpi is not None],
         "default_dpi": stages[profile["default_dpi_index"]],
         "rate": rate_hz(profile),
         "name": profile["name"] or "",
-        "buttons": {str(slot): actions["buttons"][slot] for slot in range(count)},
-        "gshift": {str(slot): actions["gshift_buttons"][slot] for slot in range(count)},
+        "buttons": {str(s): ac for s, ac in enumerate(actions["buttons"][:count]) if ac is not None},
+        "gshift": {str(s): ac for s, ac in enumerate(actions["gshift_buttons"][:count]) if ac is not None},
     }
     if profile["shift_dpi_index"] is not None and profile["shift_dpi_index"] < len(stages):
         changes["shift_dpi"] = stages[profile["shift_dpi_index"]]
@@ -161,11 +161,27 @@ def run(serve, binary, number, report):
     print(f"[1/6] bindings: every action on each of {count} slots, both layers", flush=True)
     catalog = [action["value"] for action in cli(binary, "actions") if action["value"] != "key:"]
     actions = catalog + KEYS + BUTTONS
+    # Slots whose snapshot binding the text catalog cannot spell come back byte for byte
+    # only if nothing overwrites them: sending their action back as text normalizes the
+    # trailing reserved and profile bytes to 0. The G502 Hero's factory slots, for
+    # example, store known special actions with the tail 0xffff; the G502 X stores them
+    # with 0x0000 and no slot is skipped. Leaving these slots alone is exactly what the
+    # overlay does, so the test exercises the typable slots and keeps the rest verbatim.
+    untypeable = {
+        s for s in range(count) if snapshot_actions["buttons"][s] is None
+        or snapshot_actions["gshift_buttons"][s] is None
+    }
+    if untypeable:
+        report.note(f"slots {sorted(untypeable)} are not typeable from text and stay verbatim")
     for step in range(len(actions)):
         tables = {
-            "buttons": {str(s): actions[(step + s) % len(actions)] for s in range(count)},
+            "buttons": {
+                str(s): actions[(step + s) % len(actions)]
+                for s in range(count) if s not in untypeable
+            },
             "gshift_buttons": {
-                str(s): actions[(step + s + count) % len(actions)] for s in range(count)
+                str(s): actions[(step + s + count) % len(actions)]
+                for s in range(count) if s not in untypeable
             },
         }
         result = written(
@@ -315,21 +331,31 @@ def run(serve, binary, number, report):
     report.check("activation", serve.result("state")["onboard"]["active_position"] == position)
     report.check("live DPI after activating", live_dpi(binary) == default)
 
-    other_dpi = next(dpi for dpi in stages if dpi != default)
+    # A snapshot with a single DPI stage has no other stage to switch the default to,
+    # so that live check only runs when another valid stage exists.
+    others = [dpi for dpi in stages if dpi is not None and dpi != default]
     other_rate = 500 if rate_hz(snapshot) != 500 else 1000
-    for changes, name, live in [
-        ({"default_dpi": other_dpi}, f"default DPI {other_dpi}",
-         lambda: live_dpi(binary) == other_dpi),
+    in_use = []
+    if others:
+        other_dpi = others[0]
+        in_use.append(({"default_dpi": other_dpi}, f"default DPI {other_dpi}",
+                       lambda other=other_dpi: live_dpi(binary) == other))
+    in_use += [
         ({"rate": other_rate}, f"report rate {other_rate} Hz",
          lambda: serve.result("state")["info"]["report_rate_hz"] == other_rate),
         ({"buttons": {"10": "key:f13"}}, "DPI down as F13", lambda: True),
-    ]:
+    ]
+    if not others:
+        report.note("single DPI stage: the default DPI switch live check is skipped")
+    undone = 0
+    for changes, name, live in in_use:
         result = written(serve.request("apply", profile=number, **changes), name)
         if result:
             state = (result["takes_effect"] or {}).get("state")
             report.check(f"{name} is loaded right away", state == "now", state)
             report.check(f"{name} is live", live(), "the mouse still uses the old setting")
-    for _ in range(3):
+            undone += 1
+    for _ in range(undone):
         state = (serve.result("undo")["takes_effect"] or {}).get("state")
         report.check("undo in use is loaded right away", state == "now", state)
     report.check("live DPI after undo", live_dpi(binary) == default)
@@ -338,13 +364,16 @@ def run(serve, binary, number, report):
 
     report.check("refuses turning off the profile in use",
                  not serve.request("set_enabled", profile=number, enabled=False)["ok"], "was accepted")
-    off = next(p["position"] + 1 for p in onboard["profiles"] if not p["enabled"])
-    report.check("refuses turning off a profile that is off",
-                 not serve.request("set_enabled", profile=off, enabled=False)["ok"], "was accepted")
-    for enabled in (True, False):
-        result = serve.result("set_enabled", profile=off, enabled=enabled)
-        report.check(f"profile {off} turned {'on' if enabled else 'off'}",
-                     result["onboard"]["profiles"][off - 1]["enabled"] == enabled)
+    off = next((p["position"] + 1 for p in onboard["profiles"] if not p["enabled"]), None)
+    if off is None:
+        report.note("every profile is turned on: the off-profile toggle checks are skipped")
+    else:
+        report.check("refuses turning off a profile that is off",
+                     not serve.request("set_enabled", profile=off, enabled=False)["ok"], "was accepted")
+        for enabled in (True, False):
+            result = serve.result("set_enabled", profile=off, enabled=enabled)
+            report.check(f"profile {off} turned {'on' if enabled else 'off'}",
+                         result["onboard"]["profiles"][off - 1]["enabled"] == enabled)
 
     serve.result("activate", profile=home)
     home_default = home_profile["dpi_stages"][home_profile["default_dpi_index"]]

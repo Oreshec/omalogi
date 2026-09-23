@@ -43,7 +43,7 @@ fn rate_change() -> ProfileChanges {
 #[tokio::test]
 async fn an_untested_mouse_is_read_but_edited_only_after_accepting() {
     let dir = temp("accept");
-    let device = FakeG502x::new().with_product_id(0xC08B);
+    let device = FakeG502x::new().with_product_id(0xC07D);
     let state = device.state();
     let onboard = device.feature_index(ONBOARD_PROFILES);
     let writes = move || {
@@ -55,10 +55,10 @@ async fn an_untested_mouse_is_read_but_edited_only_after_accepting() {
             .filter(|r| r[2] == onboard && WRITE_FUNCTIONS.contains(&(r[3] >> 4)))
             .count()
     };
-    let mut session = connect(device, 0xC08B, Some(dir.join("untested.json"))).await;
+    let mut session = connect(device, 0xC07D, Some(dir.join("untested.json"))).await;
 
     let support = session.support().await.expect("support");
-    assert_eq!(support.name, "G502 Hero");
+    assert_eq!(support.name, "G502 Proteus Core");
     assert!(!support.verified && support.editable && !support.accepted);
     assert_eq!(
         session
@@ -75,7 +75,9 @@ async fn an_untested_mouse_is_read_but_edited_only_after_accepting() {
         .await;
     assert!(matches!(
         refused,
-        Err(EditError::NotAccepted { name: "G502 Hero" })
+        Err(EditError::NotAccepted {
+            name: "G502 Proteus Core"
+        })
     ));
     assert_eq!(writes(), 0, "nothing was written");
     assert!(
@@ -104,16 +106,16 @@ async fn acceptance_is_remembered_per_model_and_layout() {
     let dir = temp("remember");
     let path = dir.join("untested.json");
     let mut first = connect(
-        FakeG502x::new().with_product_id(0xC08B),
-        0xC08B,
+        FakeG502x::new().with_product_id(0xC07D),
+        0xC07D,
         Some(path.clone()),
     )
     .await;
     first.accept_untested().await.expect("accepted");
 
     let mut again = connect(
-        FakeG502x::new().with_product_id(0xC08B),
-        0xC08B,
+        FakeG502x::new().with_product_id(0xC07D),
+        0xC07D,
         Some(path.clone()),
     )
     .await;
@@ -129,9 +131,9 @@ async fn acceptance_is_remembered_per_model_and_layout() {
     assert!(!other.support().await.expect("support").accepted);
     let mut relaid = connect(
         FakeG502x::new()
-            .with_product_id(0xC08B)
+            .with_product_id(0xC07D)
             .with_profile_format(5),
-        0xC08B,
+        0xC07D,
         Some(path),
     )
     .await;
@@ -164,9 +166,9 @@ async fn the_verified_mouse_needs_no_acceptance_but_an_untested_layout_does() {
 async fn a_layout_omalogi_cannot_read_is_not_editable() {
     let mut session = connect(
         FakeG502x::new()
-            .with_product_id(0xC08B)
+            .with_product_id(0xC07D)
             .with_profile_format(6),
-        0xC08B,
+        0xC07D,
         None,
     )
     .await;

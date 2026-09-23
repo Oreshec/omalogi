@@ -11,6 +11,20 @@ bootloader BL1 59.00.B0002, HID++ 4.2. Host: Arch Linux (Omarchy 4.0.3, Hyprland
 The independent checker is `research/tools/probe_readonly.py`, a separate Python
 implementation that only sends HID++ getters and `memoryRead`.
 
+## 2026-09-16 — full self-test on the G502 Hero (046d:c08b)
+
+Device: Logitech G502 Hero, wired, USB 046d:c08b, firmware U1 27.03.B0010,
+bootloader BOT 81.00.B0002, HID++ 2.0. Memory model 1, profile format 2 (libratbag's
+`union hidpp20_internal_profile`), crossing this layout from untested to verified.
+
+| Step | Result |
+|---|---|
+| `omalogi info` firmware, DPI range, report rates | U1 27.03.B0010; 200–12800 step 50; 125/250/500/1000 Hz; matches libratbag's c08b dump |
+| `omalogi backup` vs probe dump | all 20 sectors byte-identical |
+| Self-test | 953 checks passed, 0 failed; byte-for-byte restore (0 sector diffs) |
+| `omalogi profiles edit` on DPI, rate and buttons | write verified; profile memory restored byte for byte |
+| Coexistence with OpenLogi 0.8.3 agent | 30 Omalogi commands while the agent held the device: 0 failures, backups identical |
+
 ## 2026-09-13 — read path
 
 | Check | Result |

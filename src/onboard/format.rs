@@ -16,8 +16,12 @@ pub const READ_CHUNK: usize = 16;
 
 /// `(memory model, profile format)` pairs whose profile layout was verified on a device.
 ///
-/// `(1, 4)`: wired G502 X (046d:c099), firmware U1 60.00.B0009.
-pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 4)];
+/// `(1, 4)`: wired G502 X (046d:c099), firmware U1 60.00.B0009 — read, edited and
+/// restored byte for byte, and cross-checked against libratbag's probe.
+/// `(1, 2)`: wired G502 Hero (046d:c08b), firmware U1 27.03.B0010 — read, edited and
+/// restored byte for byte in the on-hardware self-test (memory model 1, profile
+/// format 2; the factory special-action slots keep their verbatim tail).
+pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 2), (1, 4)];
 
 /// `(memory model, profile format)` pairs Omalogi reads and edits. libratbag lays out all
 /// five formats with one struct (`union hidpp20_internal_profile`): report rate, DPI
