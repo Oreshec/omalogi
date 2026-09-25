@@ -167,21 +167,25 @@ def run(serve, binary, number, report):
     # example, store known special actions with the tail 0xffff; the G502 X stores them
     # with 0x0000 and no slot is skipped. Leaving these slots alone is exactly what the
     # overlay does, so the test exercises the typable slots and keeps the rest verbatim.
-    untypeable = {
-        s for s in range(count) if snapshot_actions["buttons"][s] is None
-        or snapshot_actions["gshift_buttons"][s] is None
-    }
-    if untypeable:
-        report.note(f"slots {sorted(untypeable)} are not typeable from text and stay verbatim")
+    # The two layers are tracked apart: a slot the G-Shift layer cannot spell is still
+    # written on the default layer, and the other way round.
+    untypeable_buttons = {s for s in range(count) if snapshot_actions["buttons"][s] is None}
+    untypeable_gshift = {s for s in range(count) if snapshot_actions["gshift_buttons"][s] is None}
+    for label, skipped in (("default", untypeable_buttons), ("G-Shift", untypeable_gshift)):
+        if skipped:
+            report.note(
+                f"{label} slots {sorted(skipped)} are not typeable from text "
+                "and stay verbatim"
+            )
     for step in range(len(actions)):
         tables = {
             "buttons": {
                 str(s): actions[(step + s) % len(actions)]
-                for s in range(count) if s not in untypeable
+                for s in range(count) if s not in untypeable_buttons
             },
             "gshift_buttons": {
                 str(s): actions[(step + s + count) % len(actions)]
-                for s in range(count) if s not in untypeable
+                for s in range(count) if s not in untypeable_gshift
             },
         }
         result = written(

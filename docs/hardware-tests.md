@@ -5,25 +5,40 @@ done, how it was checked independently of Omalogi, and the result. The raw devic
 dumps referenced here stay local (they contain the device Unit ID); the redacted
 fixture in `tests/fixtures/g502x-c099.json` comes from the same dump.
 
-Device for all entries: Logitech G502 X, wired, USB 046d:c099, firmware U1 60.00.B0009,
-bootloader BL1 59.00.B0002, HID++ 4.2. Host: Arch Linux (Omarchy 4.0.3, Hyprland 0.56.2).
+Device for the 2026-09-13 entries: Logitech G502 X, wired, USB 046d:c099, firmware
+U1 60.00.B0009, bootloader BL1 59.00.B0002, HID++ 4.2. Host: Arch Linux
+(Omarchy 4.0.3, Hyprland 0.56.2).
 
 The independent checker is `research/tools/probe_readonly.py`, a separate Python
-implementation that only sends HID++ getters and `memoryRead`.
+implementation that only sends HID++ getters and `memoryRead`. It is pinned to
+046d:c099, so entries for other mice rest on Omalogi's own read-back instead.
 
-## 2026-09-16 — full self-test on the G502 Hero (046d:c08b)
+## 2026-09-23 — full self-test on the G502 Hero (046d:c08b)
 
-Device: Logitech G502 Hero, wired, USB 046d:c08b, firmware U1 27.03.B0010,
-bootloader BOT 81.00.B0002, HID++ 2.0. Memory model 1, profile format 2 (libratbag's
-`union hidpp20_internal_profile`), crossing this layout from untested to verified.
+Device: Logitech G502 Hero, wired, USB 046d:c08b, firmware U1 27.03.B0010, bootloader
+BOT 81.00.B0002. Onboard profile memory reports memory model 1, profile format 2,
+5 profiles and 11 buttons, so this entry is the one that moves layout (1, 2) in
+`VERIFIED_LAYOUTS` and 046d:c08b into the verified table.
 
-| Step | Result |
+| Check | Result |
 |---|---|
-| `omalogi info` firmware, DPI range, report rates | U1 27.03.B0010; 200–12800 step 50; 125/250/500/1000 Hz; matches libratbag's c08b dump |
-| `omalogi backup` vs probe dump | all 20 sectors byte-identical |
-| Self-test | 953 checks passed, 0 failed; byte-for-byte restore (0 sector diffs) |
-| `omalogi profiles edit` on DPI, rate and buttons | write verified; profile memory restored byte for byte |
-| Coexistence with OpenLogi 0.8.3 agent | 30 Omalogi commands while the agent held the device: 0 failures, backups identical |
+| `omalogi info` | U1 27.03.B0010 (active), BOT 81.00.B0002; DPI 1000, sensor range 100–25600; 125/250/500/1000 Hz; onboard mode |
+| `scripts/hardware-selftest.py` on spare profile 5 (named `Omalogi Test` for the run) | 1463 checks passed, 0 failed, 54 s |
+| Profile memory after the run | fresh backup byte-identical to the pre-run backup, all 12 saved sectors, 0 diffs |
+| Independent cross-check | none: `probe_readonly.py` only speaks 046d:c099 |
+
+What the run skipped, so the check count (1463 here, 1979 on the G502 X) is not read as a
+difference in the mouse — the two are different hardware with different snapshots, and the
+Hero's factory slots hold bindings the text catalog cannot spell:
+
+- default-layer slots 5–10, whose factory bindings carry a `0xff` profile byte
+  (`90 xx ff ff`); the G502 X stores `90 xx 00 00` and skips nothing. The G-Shift layer of
+  the same profiles spells all 11 slots, so nothing is skipped there.
+- the live DPI-switch check: every profile that reached it has a single DPI stage, so
+  there is no other stage to switch the default to.
+- the profile on/off toggle checks: all five profiles are enabled on this mouse.
+
+The overlay leaves a slot alone unless it is edited, and so does the self-test now.
 
 ## 2026-09-13 — read path
 
