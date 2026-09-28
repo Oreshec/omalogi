@@ -1219,7 +1219,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
  "ureq",
@@ -1275,7 +1275,7 @@ dependencies = [
  "serde",
  "strum",
  "sys-locale",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "toml 0.8.23",
  "toml_edit 0.22.27",
@@ -1295,7 +1295,7 @@ dependencies = [
  "openlogi-fixture",
  "openlogi-hidpp",
  "serde",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
 ]
@@ -1315,7 +1315,7 @@ dependencies = [
  "openlogi-core",
  "serde",
  "serde_ignored",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1335,7 +1335,7 @@ dependencies = [
  "openlogi-hidpp",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "windows-sys 0.61.2",
@@ -1359,7 +1359,7 @@ dependencies = [
  "num_enum",
  "openlogi-device-registry",
  "openlogi-hidpp-derive",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -1920,11 +1920,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -1940,9 +1940,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
