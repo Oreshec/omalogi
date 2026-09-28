@@ -563,7 +563,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1259,9 +1259,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-core"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1412836ff0fd9731a3b8759920fe3a8bf1967673b77743ae2b472b032357dd16"
+checksum = "dfaaf6bed87efbdac9a66e767492020d4427e4b1126a1505e9e5d71065b82557"
 dependencies = [
  "atomic-write-file",
  "az",
@@ -1284,9 +1284,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-device"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0c2ee91dcc2d1c967bdc6d83a1c87837577fc116fb4ae929c341a3bd76a150a"
+checksum = "678aaef28b3cb918906a54f629e97e5de397d35086c0bed19244bc3a8c5984e4"
 dependencies = [
  "futures-concurrency",
  "futures-lite",
@@ -1302,15 +1302,15 @@ dependencies = [
 
 [[package]]
 name = "openlogi-device-registry"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "838027965b947a538f14102d830b679caa14af1c1eebf2abdaf01fe718a873b2"
+checksum = "da9f498b18e90443bf7b507593a28d2ba58a6b88796970855f9c51c2fffa5ab0"
 
 [[package]]
 name = "openlogi-fixture"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc204335daa2149a603e134bf97735faf7beb62448ce2100c451812bddf64754"
+checksum = "4738268fb35616f1f08e0ab23ccbcd25f71b2214193c72fece36a9a7f643bd42"
 dependencies = [
  "openlogi-core",
  "serde",
@@ -1320,9 +1320,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-hid"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22b4ed28fbca91e1e54ed9d691cb1db425579e715eb57c777c60076fa3d0534f"
+checksum = "b97ae7783c5e831c3fe626c7b67c69b08506882581eb2bb27e2689338eb5893e"
 dependencies = [
  "atomic-write-file",
  "futures-concurrency",
@@ -1343,9 +1343,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-hidpp"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23def7b200b498000189aa97705ee1f7c14d450ff2c28b7daa54a15d8eda63c7"
+checksum = "94e9f71ec078b0538ef8c346de1891e4f65702da5f52a582dfaa3a9d0888978f"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -1365,9 +1365,9 @@ dependencies = [
 
 [[package]]
 name = "openlogi-hidpp-derive"
-version = "0.8.6"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "707167fbfb3d189a6973a1f7a564c0208fa63e7e672ea964c086512a11db572e"
+checksum = "338f034c7f90d4ed6cbc180491b143b2f63ac353e1486638731e3aa0c31cd5b6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1613,7 +1613,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2257,7 +2257,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

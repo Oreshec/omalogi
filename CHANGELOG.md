@@ -5,6 +5,12 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Changed
+
+- OpenLogi 0.8.9 (from 0.8.6). `openlogi-hidpp` and `openlogi-hid` are unchanged between
+  the two, and `openlogi-core` changed only in config modules Omalogi does not use, so
+  nothing in the path to the mouse moved. Reads on a G502 X are identical to 0.8.6.
+
 ## [0.3.4] - 2026-09-26
 
 ### Added
