@@ -5,11 +5,25 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Added
+
+- The Logitech G502 X Lightspeed through its LIGHTSPEED receiver (WPID 409f) is verified
+  on real hardware, and with it profile layout (1, 3), so it needs no acceptance before a
+  write. The first wireless model verified, by @mateuspim (#49, #51). The wired G502 X
+  Lightspeed (c098) stays untested.
+
 ### Changed
 
 - OpenLogi 0.8.9 (from 0.8.6). `openlogi-hidpp` and `openlogi-hid` are unchanged between
   the two, and `openlogi-core` changed only in config modules Omalogi does not use, so
   nothing in the path to the mouse moved. Reads on a G502 X are identical to 0.8.6.
+
+### Fixed
+
+- A firmware-action binding keeps the byte between its code and profile. The G502 X
+  Lightspeed stores its factory special actions as `90 xx ff 00`; that byte was read as
+  nothing and written back as `0x00`, so writing such a slot back from text changed the
+  profile memory. Those slots now have no text form and stay verbatim (@mateuspim, #50).
 
 ## [0.3.4] - 2026-09-26
 

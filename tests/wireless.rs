@@ -30,7 +30,10 @@ async fn a_session_reaches_a_mouse_at_its_receiver_slot() {
     assert_eq!(onboard.profiles.len(), 5);
     let support = session.support().await.expect("support");
     assert_eq!(support.name, "G502 X Lightspeed");
-    assert!(!support.verified, "wireless models are untested");
+    assert!(
+        support.verified,
+        "the G502 X Lightspeed is verified through a receiver"
+    );
 
     let requests = state.lock().expect("state").requests.clone();
     assert!(!requests.is_empty());

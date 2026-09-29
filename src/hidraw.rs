@@ -79,9 +79,11 @@ pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[
 ];
 
 /// Wireless G-series mice with onboard profiles, by the wireless product id (WPID) their
-/// receiver reports, from libratbag's device database. All untested; they are reached
-/// through OpenLogi's receiver support (see [`crate::wireless`]).
+/// receiver reports, from libratbag's device database. They are reached through
+/// OpenLogi's receiver support (see [`crate::wireless`]). The verified G502 X Lightspeed
+/// comes first; the rest are untested.
 pub const WIRELESS_DEVICES: &[SupportedDevice] = &[
+    verified(0x409F, "G502 X Lightspeed"),
     untested(0x402C, "G602"),
     untested(0x4053, "G900"),
     untested(0x405D, "G403 Wireless"),
@@ -97,7 +99,6 @@ pub const WIRELESS_DEVICES: &[SupportedDevice] = &[
     untested(0x4093, "G Pro X Superlight"),
     untested(0x4099, "G502 X Plus"),
     untested(0x409D, "G705"),
-    untested(0x409F, "G502 X Lightspeed"),
 ];
 
 #[derive(Debug, Error)]
@@ -437,12 +438,14 @@ mod tests {
     }
 
     #[test]
-    fn wireless_ids_are_unique_untested_and_not_usb_ids() {
+    fn wireless_ids_are_unique_and_not_usb_ids_and_only_the_g502_x_lightspeed_is_verified() {
         let mut ids: Vec<u16> = WIRELESS_DEVICES.iter().map(|d| d.product_id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), WIRELESS_DEVICES.len());
-        assert!(WIRELESS_DEVICES.iter().all(|d| !d.verified));
+        assert_eq!(WIRELESS_DEVICES[0].product_id, 0x409F);
+        assert!(WIRELESS_DEVICES[0].verified);
+        assert_eq!(WIRELESS_DEVICES.iter().filter(|d| d.verified).count(), 1);
         assert!(WIRELESS_DEVICES.iter().all(|w| {
             SUPPORTED_DEVICES
                 .iter()

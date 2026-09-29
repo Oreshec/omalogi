@@ -21,7 +21,11 @@ pub const READ_CHUNK: usize = 16;
 /// `(1, 2)`: wired G502 Hero (046d:c08b), firmware U1 27.03.B0010 — read, edited and
 /// restored byte for byte in the on-hardware self-test (memory model 1, profile
 /// format 2; the factory special-action slots keep their verbatim tail).
-pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 2), (1, 4)];
+/// `(1, 3)`: G502 X Lightspeed through its LIGHTSPEED receiver (WPID 409f), firmware
+/// MPM 30.00.B0014 — read, edited and restored byte for byte in the on-hardware
+/// self-test (its factory special-action slots store a `0xff` reserved byte and stay
+/// verbatim).
+pub const VERIFIED_LAYOUTS: &[(u8, u8)] = &[(1, 2), (1, 3), (1, 4)];
 
 /// `(memory model, profile format)` pairs Omalogi reads and edits. libratbag lays out all
 /// five formats with one struct (`union hidpp20_internal_profile`): report rate, DPI

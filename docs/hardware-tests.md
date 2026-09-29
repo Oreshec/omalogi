@@ -13,7 +13,41 @@ The independent checker is `research/tools/probe_readonly.py`, a separate Python
 implementation that only sends HID++ getters and `memoryRead`. It is pinned to
 046d:c099, so entries for other mice rest on Omalogi's own read-back instead.
 
-## 2026-09-23 — full self-test on the G502 Hero (046d:c08b)
+## 2026-09-29 — full self-test on the G502 X Lightspeed through its receiver (WPID 409f)
+
+Device: Logitech G502 X Lightspeed, through its LIGHTSPEED receiver, WPID 409f,
+firmware MPM 30.00.B0014. Onboard profile memory reports memory model 1, profile
+format 3, 5 profiles and 11 buttons, so this entry is the one that moves layout (1, 3)
+into `VERIFIED_LAYOUTS` and WPID 409f into the verified table. The wired G502 X
+Lightspeed (046d:c098) stays untested: nothing here was checked over its cable.
+
+| Check | Result |
+|---|---|
+| First `scripts/hardware-selftest.py` on profile 5, before #50 | 1976 checks passed, 1 failed: sector `0005` differed at six bytes, each `0xff` → `0x00` |
+| Cause | the factory special actions are stored as `90 xx ff 00`; decoding dropped the `0xff` reserved byte and encoding wrote `0x00`. Fixed in #50 |
+| `scripts/hardware-selftest.py` on profile 5, with #50 | 1466 checks passed, 0 failed, 87 s; start and end backups identical in every sector |
+| Same, on profile 4 with profile 5 turned off | 1469 checks passed, 0 failed, 68 s, profile on/off checks included; start and end backups identical in every sector |
+| Profile memory after each run | the test slot restored from the pre-run backup; a fresh backup byte-identical to the owner's original, all 9 saved sectors |
+| Independent cross-check | none: `probe_readonly.py` only speaks 046d:c099 |
+
+What the runs skipped, so the check count is not read as a difference in the mouse:
+
+- default-layer slots 4 and 6–10 (DPI shift, scroll left and right, cycle profile, DPI up
+  and down), whose factory bindings carry a `0xff` reserved byte (`90 xx ff 00`). They
+  have no text form and stay verbatim, as on the G502 Hero. The G-Shift layer spells all
+  11 slots.
+
+Found along the way, not a failure of Omalogi: turning on a profile placed **before**
+the active one moves the mouse's current profile back by one position without loading
+it. With profile 4 off and profile 5 active at 1600 DPI, `omalogi profiles enable 4`
+made the mouse report profile 4 as active while the live DPI stayed 1600. Two presses of
+the cycle-profile button then landed on profile 1 at 1000 DPI (4 → 5 → 1), so the
+firmware's own current profile had moved. Turning profile 4 off and on with profile 3
+active changed nothing. The first run with profile 4 off hit this in the self-test's
+on/off step: 1467 checks passed, 2 failed ("profile 4 is in use", and the directory
+sector left changed until the script's restore). The passing run above puts the turned-off
+profile after the test profile.
+
 
 Device: Logitech G502 Hero, wired, USB 046d:c08b, firmware U1 27.03.B0010, bootloader
 BOT 81.00.B0002. Onboard profile memory reports memory model 1, profile format 2,
