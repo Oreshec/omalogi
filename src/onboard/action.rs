@@ -118,6 +118,7 @@ pub fn parse_action(text: &str) -> Result<Binding, String> {
         return Ok(Binding::Special {
             code: action.code(),
             action: Some(action),
+            reserved: 0,
             profile: 0,
         });
     }
@@ -212,8 +213,9 @@ pub fn catalog() -> Vec<ActionInfo> {
 }
 
 /// The action text [`parse_action`] reads back into `binding`, or `None` for bindings
-/// that cannot be typed: macros, unknown encodings, right-hand modifiers, and several
-/// mouse buttons at once.
+/// that cannot be typed: macros, unknown encodings, right-hand modifiers, several
+/// mouse buttons at once, and firmware actions with nonzero reserved or profile bytes,
+/// which text would write back as 0.
 #[must_use]
 pub fn action_text(binding: &Binding) -> Option<String> {
     match *binding {
@@ -232,6 +234,7 @@ pub fn action_text(binding: &Binding) -> Option<String> {
         }
         Binding::Special {
             action: Some(action),
+            reserved: 0,
             profile: 0,
             ..
         } => SPECIALS
@@ -481,6 +484,12 @@ mod tests {
         assert_eq!(text([0x80, 0x02, 0x10, 0x17]), None, "right ctrl");
         assert_eq!(text([0x80, 0x01, 0x00, 0x03]), None, "two mouse buttons");
         assert_eq!(text([0x90, 0x0C, 0x00, 0x00]), None, "battery indicator");
+        assert_eq!(
+            text([0x90, 0x07, 0xFF, 0x00]),
+            None,
+            "G502 X Lightspeed DPI shift"
+        );
+        assert_eq!(text([0x90, 0x03, 0xFF, 0xFF]), None, "G502 Hero DPI up");
         assert_eq!(text([0x80, 0x02, 0x00, 0x64]), None, "unnamed key");
     }
 

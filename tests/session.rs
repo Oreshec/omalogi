@@ -74,6 +74,7 @@ async fn reads_onboard_profiles() {
         Binding::Special {
             code: 0x0B,
             action: Some(SpecialAction::GShift),
+            reserved: 0,
             profile: 0
         }
     );

@@ -164,8 +164,9 @@ def run(serve, binary, number, report):
     # Slots whose snapshot binding the text catalog cannot spell come back byte for byte
     # only if nothing overwrites them: sending their action back as text normalizes the
     # trailing reserved and profile bytes to 0. The G502 Hero's factory slots, for
-    # example, store known special actions with the tail 0xffff; the G502 X stores them
-    # with 0x0000 and no slot is skipped. Leaving these slots alone is exactly what the
+    # example, store known special actions with the tail 0xffff and the G502 X
+    # Lightspeed's receiver profiles with 0xff00; the wired G502 X stores them with
+    # 0x0000 and no slot is skipped. Leaving these slots alone is exactly what the
     # overlay does, so the test exercises the typable slots and keeps the rest verbatim.
     # The two layers are tracked apart: a slot the G-Shift layer cannot spell is still
     # written on the default layer, and the other way round.

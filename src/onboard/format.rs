@@ -245,10 +245,13 @@ pub enum Binding {
         usage: u16,
     },
     /// A firmware action; `action` is `None` for codes not known to libratbag.
-    /// `profile` is the target of profile actions such as `EnableProfile`.
+    /// `profile` is the target of profile actions such as `EnableProfile`. `reserved` is
+    /// the byte between them: 0 on most mice, 0xFF on the G502 X Lightspeed's factory
+    /// slots. It is kept so a binding written back is byte for byte what was read.
     Special {
         code: u8,
         action: Option<SpecialAction>,
+        reserved: u8,
         profile: u8,
     },
     /// A reference into macro memory; macro contents are not decoded yet.
@@ -272,9 +275,10 @@ impl Binding {
             [0x80, 0x03, hi, lo] => Self::Consumer {
                 usage: u16::from_be_bytes([hi, lo]),
             },
-            [0x90, code, _, profile] => Self::Special {
+            [0x90, code, reserved, profile] => Self::Special {
                 code,
                 action: SpecialAction::from_code(code),
+                reserved,
                 profile,
             },
             [0x00, ..] => Self::Macro { raw },
@@ -475,6 +479,7 @@ mod tests {
         Binding::Special {
             code,
             action: SpecialAction::from_code(code),
+            reserved: 0,
             profile: 0,
         }
     }

@@ -43,7 +43,12 @@ impl Binding {
                 let [hi, lo] = usage.to_be_bytes();
                 [0x80, 0x03, hi, lo]
             }
-            Self::Special { code, profile, .. } => [0x90, code, 0x00, profile],
+            Self::Special {
+                code,
+                reserved,
+                profile,
+                ..
+            } => [0x90, code, reserved, profile],
             Self::Macro { raw } | Self::Unknown { raw } => raw,
             Self::Disabled => [0xFF; BINDING_LEN],
         }
@@ -217,6 +222,17 @@ mod tests {
     }
 
     #[test]
+    fn special_bindings_keep_their_reserved_byte() {
+        for raw in [
+            [0x90, 0x07, 0xFF, 0x00],
+            [0x90, 0x03, 0xFF, 0xFF],
+            [0x90, 0x0B, 0x00, 0x00],
+        ] {
+            assert_eq!(Binding::decode(raw).encode(), raw);
+        }
+    }
+
+    #[test]
     fn unchanged_edit_reproduces_the_sector() {
         let sector = fixture_hex("/onboard/sectors/0002");
         let profile = Profile::parse(&sector, &description()).expect("profile");
@@ -267,6 +283,7 @@ mod tests {
             Binding::Special {
                 code: 0x07,
                 action: Some(SpecialAction::ShiftDpi),
+                reserved: 0,
                 profile: 0
             }
         );
