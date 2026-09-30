@@ -75,7 +75,7 @@ person verifying it.
    assigned to you automatically. `/unclaim` gives the model back, and a claim with no
    update for 30 days is released.
 3. Follow [docs/agents/verify-my-mouse.md](docs/agents/verify-my-mouse.md), with your coding
-   agent or by hand, and open the pull request with `Closes #<issue>`.
+   agent or by hand, and open the pull request against `next` with `Closes #<issue>`.
 
 A second report for a model that already has an open issue is closed and pointed at it,
 so everything about a model stays in one place.
@@ -99,7 +99,14 @@ so everything about a model stays in one place.
 
 One version lives in four places, and a test fails when the last two disagree:
 `Cargo.toml`, `manifest.json`, `VERSION` in `plugin/Model.js`, and the `CHANGELOG.md`
-heading. Tag `vX.Y.Z` on `main` once they match; the tag builds the release.
+heading. Merge `next` into `main` once they match, then tag `vX.Y.Z` on `main`; the tag
+builds the release.
+
+## Branches
+
+Open pull requests against `next`. `main` holds released code only: it is what
+`omarchy plugin add` and `omarchy plugin update` install, and the commit the plugin
+marketplace verifies, so it moves once per release, when `next` is merged into it.
 
 ## Commits
 

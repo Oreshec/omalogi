@@ -127,7 +127,7 @@ async function run({ github, context }) {
       body: [
         `Thanks, the ${model} (${id}) is yours to verify and is assigned to you.`,
         "",
-        "Open your coding agent in a clone of this repository and give it `docs/agents/verify-my-mouse.md`. It walks you through the backup, the self-test and the pull request. Mention this issue in the pull request with `Closes #" + issue.number + "`.",
+        "Open your coding agent in a clone of this repository and give it `docs/agents/verify-my-mouse.md`. It walks you through the backup, the self-test and the pull request. Open the pull request against the `next` branch and mention this issue in it with `Closes #" + issue.number + "`.",
         "",
         "If the self-test fails, post its summary here; a failure on real hardware is as useful as a pass. If you cannot finish, comment `/unclaim`. A claim with no update for 30 days is released so someone else can pick the model up."
       ].join("\n")

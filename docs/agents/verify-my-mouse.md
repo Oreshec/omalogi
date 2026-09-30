@@ -55,7 +55,7 @@ Guide me one step at a time and wait for my output after each step:
 6. If anything failed or read back wrong: stop, help me run `omalogi restore <backup>`,
    and help me post the self-test summary on the model's issue instead of opening a pull
    request.
-7. If every check passed, open a pull request that:
+7. If every check passed, open a pull request against the `next` branch that:
    - sets `verified` for this exact model and connection in src/hidraw.rs
      (SUPPORTED_DEVICES for USB, WIRELESS_DEVICES for a receiver), and adds its profile
      layout to VERIFIED_LAYOUTS in src/onboard/format.rs if it is not there yet, citing

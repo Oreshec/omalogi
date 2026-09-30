@@ -16,5 +16,5 @@ rules, so any model works the same way.
 Steps that touch a real mouse are always run by you, the human: the agent prepares the
 exact commands and reads the results you paste back.
 
-When the work is done, ask the agent to open a pull request that says what changed, how
-it was tested, and which hardware steps you ran.
+When the work is done, ask the agent to open a pull request against the `next` branch that
+says what changed, how it was tested, and which hardware steps you ran.

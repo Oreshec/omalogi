@@ -90,4 +90,5 @@ the human when a task seems to need it.
 - User-facing text names what people recognise ("profile", "button", "DPI level"), in
   plain, active sentences.
 - Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`), one logical change per
-  commit, through a pull request.
+  commit, through a pull request against `next` (never `main`, which holds released code
+  only; see "Branches" in CONTRIBUTING.md).
