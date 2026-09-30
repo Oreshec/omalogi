@@ -740,3 +740,45 @@ async fn restore_works_past_a_damaged_directory() {
     );
     assert_eq!(h.committed(), [0]);
 }
+
+#[tokio::test]
+async fn the_profile_in_use_stays_in_use_when_the_directory_changes() {
+    let mut h = Harness::new("keeps-active").await;
+    let original = fixture_sectors();
+    {
+        let mut state = h.state.lock().expect("state");
+        state.current_profile = 2;
+        state.loaded_sector = Some(original[&2].clone());
+    }
+
+    // A profile after the one in use: the mouse keeps its place, nothing is reselected.
+    h.session
+        .set_profile_enabled(3, true)
+        .await
+        .expect("profile 3 turns on");
+    assert!(h.state.lock().expect("state").loads.is_empty());
+
+    // A profile before it: the mouse reports profile 1, still running profile 2.
+    h.state.lock().expect("state").current_after_directory_write = Some(1);
+    h.session
+        .set_profile_enabled(1, false)
+        .await
+        .expect("profile 1 turns off");
+    {
+        let state = h.state.lock().expect("state");
+        assert_eq!(state.current_profile, 2, "profile 2 is in use again");
+        assert_eq!(state.loads, [2], "and loaded, so it runs its own settings");
+        assert_eq!(
+            state.loaded_sector.as_deref(),
+            Some(original[&2].as_slice())
+        );
+    }
+
+    h.session
+        .set_profile_enabled(1, true)
+        .await
+        .expect("profile 1 turns on again");
+    let state = h.state.lock().expect("state");
+    assert_eq!(state.current_profile, 2);
+    assert_eq!(state.loads, [2, 2]);
+}

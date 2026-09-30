@@ -55,6 +55,12 @@ pub struct State {
     pub pending_write: Option<PendingWrite>,
     /// When set, the next committed write stores a flipped first byte.
     pub corrupt_next_write: bool,
+    /// When set, a committed write to the profile directory makes the firmware report
+    /// this profile as current, without loading it. A wired G502 X and a G502 X Lightspeed
+    /// both move their current profile when a profile before the active one is turned on
+    /// or off (docs/hardware-tests.md, 2026-09-30); the exact rule differs, so tests name
+    /// the outcome instead of modelling it.
+    pub current_after_directory_write: Option<u8>,
     /// Sectors committed by `memoryWriteEnd`, in order.
     pub committed: Vec<u16>,
     /// Every report the host wrote, in order.
@@ -146,6 +152,7 @@ impl FakeG502x {
             sectors,
             pending_write: None,
             corrupt_next_write: false,
+            current_after_directory_write: None,
             committed: Vec::new(),
             requests: Vec::new(),
         };
@@ -324,6 +331,11 @@ impl FakeG502x {
                 if state.corrupt_next_write {
                     state.corrupt_next_write = false;
                     pending.data[0] ^= 0xFF;
+                }
+                if pending.sector == 0
+                    && let Some(index) = state.current_after_directory_write
+                {
+                    state.current_profile = index;
                 }
                 state.sectors.insert(pending.sector, pending.data);
                 state.committed.push(pending.sector);

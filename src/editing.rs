@@ -632,6 +632,13 @@ impl Session {
     /// Turns profile `number` on or off in the profile directory, verified and rolled back
     /// on a mismatch. The profile in use, or the only one turned on, cannot be turned off.
     /// The caller makes sure a backup exists first.
+    ///
+    /// The profile in use stays in use. Turning on or off a profile placed before it makes
+    /// the mouse move its current profile: a wired G502 X reported another profile while
+    /// still running the old one, then switched to a third, and a G502 X Lightspeed reported
+    /// the previous position without loading it (docs/hardware-tests.md, 2026-09-30). The
+    /// rule differs between them, so the profile in use is compared before and after the
+    /// write and selected again if it moved, which also loads it.
     pub async fn set_profile_enabled(
         &mut self,
         number: usize,
@@ -640,7 +647,28 @@ impl Session {
         let (previous, edited) = self.plan_enabled(number, enabled).await?;
         self.ensure_writes_accepted().await?;
         let feature = self.onboard_feature().await?;
-        write_verified(&feature, format::USER_DIRECTORY_SECTOR, &edited, &previous).await
+        let in_use = feature
+            .current_profile_index()
+            .await
+            .map_err(SessionError::from)?;
+        write_verified(&feature, format::USER_DIRECTORY_SECTOR, &edited, &previous).await?;
+        let now = feature
+            .current_profile_index()
+            .await
+            .map_err(SessionError::from)?;
+        let Some(position) = format::current_profile_position(in_use).filter(|_| now != in_use)
+        else {
+            return Ok(());
+        };
+        let profile = position + 1;
+        match switch_profile(&feature, profile).await {
+            Ok(()) => Ok(()),
+            Err(source) => Err(EditError::LeftOnOtherProfile {
+                profile,
+                current: format::current_profile_position(now).map_or(profile, |p| p + 1),
+                source,
+            }),
+        }
     }
 
     /// The directory as read, and with the profile's flag changed.
