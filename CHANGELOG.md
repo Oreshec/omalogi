@@ -20,6 +20,10 @@ All notable changes are listed here. The project follows
 
 ### Fixed
 
+- Turning a profile on or off no longer changes the profile in use. Changing a profile
+  placed before it made the mouse report another profile while running the old one, or
+  switch to a third: found on a G502 X Lightspeed by @mateuspim (#51) and reproduced on a
+  wired G502 X. Omalogi now selects the profile in use again when the mouse moved it.
 - A firmware-action binding keeps the byte between its code and profile. The G502 X
   Lightspeed stores its factory special actions as `90 xx ff 00`; that byte was read as
   nothing and written back as `0x00`, so writing such a slot back from text changed the

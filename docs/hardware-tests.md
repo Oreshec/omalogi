@@ -37,9 +37,9 @@ What the runs skipped, so the check count is not read as a difference in the mou
   have no text form and stay verbatim, as on the G502 Hero. The G-Shift layer spells all
   11 slots.
 
-Found along the way, not a failure of Omalogi: turning on a profile placed **before**
-the active one moves the mouse's current profile back by one position without loading
-it. With profile 4 off and profile 5 active at 1600 DPI, `omalogi profiles enable 4`
+Found along the way: turning on a profile placed **before** the active one moves the
+mouse's current profile back by one position without loading it. Omalogi now selects
+the profile in use again after such a write; see 2026-09-30 below. With profile 4 off and profile 5 active at 1600 DPI, `omalogi profiles enable 4`
 made the mouse report profile 4 as active while the live DPI stayed 1600. Two presses of
 the cycle-profile button then landed on profile 1 at 1000 DPI (4 → 5 → 1), so the
 firmware's own current profile had moved. Turning profile 4 off and on with profile 3
@@ -328,6 +328,30 @@ G502 X before merging, with the daemon running.
 | `backup`, `--json info`, `--json profiles` with the 0.8.3 helper and the 0.8.6 build | identical: all 9 sectors, device info and every profile |
 | `scripts/hardware-selftest.py --profile 3` | 1979 checks passed, 0 failed, in 30 s; `apply` median 271 ms, as before |
 | Fresh backup after the self-test | all 9 sectors byte-identical to the backup before it |
+
+Result: **pass**.
+
+## 2026-09-30: turning a profile on or off keeps the profile in use
+
+Following the G502 X Lightspeed finding above, reproduced on the wired G502 X (U1
+60.00.B0009) with the daemon running and no rules configured, so nothing else switched
+profiles. Profile defaults: 1 at 2100 DPI, 2 at 800, 3 at 1600, so the live DPI shows
+which profile the mouse is running. Profile 3 in use, profile 1 placed before it.
+
+| Step | Before the fix | With the fix |
+|---|---|---|
+| `profiles activate 3` | reports 3, live 1600 | reports 3, live 1600 |
+| `profiles disable 1` | reports **2**, live 1600: still running profile 3 | reports 3, live 1600 |
+| `profiles enable 1` | reports **1**, live **2100**: switched to profile 1 | reports 3, live 1600 |
+
+The G502 X and the Lightspeed move their current profile by different rules, so the fix
+does not predict the rule: `set_profile_enabled` reads the current profile before and
+after the directory write and, if it moved, selects the profile in use again, which the
+firmware loads. The emulated device gained a switch that names the outcome, and a test
+that fails without the fix.
+
+Each run started from a backup and ended with profile 2 in use at 800 DPI and all 9
+sectors byte-identical to it.
 
 Result: **pass**.
 
