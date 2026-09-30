@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.elberacasa.omalogi",
   "name": "Omalogi",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "author": "elberacasa",
   "license": "MIT OR Apache-2.0",
   "description": "Onboard profiles for Logitech G-series mice.",

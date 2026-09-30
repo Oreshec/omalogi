@@ -5,6 +5,8 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+## [0.3.5] - 2026-09-30
+
 ### Added
 
 - The Logitech G502 X Lightspeed through its LIGHTSPEED receiver (WPID 409f) is verified
