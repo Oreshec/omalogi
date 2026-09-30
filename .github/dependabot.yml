@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
+    # Updates land with everything else on next; main moves once per release.
+    target-branch: next
     schedule:
       interval: weekly
     groups:
@@ -15,5 +17,6 @@ updates:
         exclude-patterns: ["openlogi-*"]
   - package-ecosystem: github-actions
     directory: /
+    target-branch: next
     schedule:
       interval: monthly
