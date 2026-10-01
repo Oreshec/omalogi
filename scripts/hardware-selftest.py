@@ -120,6 +120,24 @@ def changes_for(profile, actions, count):
     return changes
 
 
+def opaque_tail(binding):
+    """Whether a binding is stored with the bytes its own text cannot spell: a firmware
+    action whose reserved or profile byte is nonzero. Text names the action and carries
+    no bytes of its own, so writing that name back is a no-op, but any other action would
+    overwrite those two bytes with 0."""
+    return (binding.get("type") == "special"
+            and (binding.get("reserved", 0) != 0 or binding.get("profile", 0) != 0))
+
+
+def verbatim_slots(bindings, actions, count):
+    """The slots this layer must not rotate: bindings with no text form at all, and
+    firmware actions stored with a tail the text cannot reproduce. Both come back byte for
+    byte only if nothing overwrites them; the overlay leaves such a slot alone too, so the
+    test keeps it as read and checks that sending its own action back writes nothing."""
+    return {s for s in range(count)
+            if actions[s] is None or opaque_tail(bindings[s])}
+
+
 def sector_differences(first, second):
     a = json.load(open(first))["sectors"]
     b = json.load(open(second))["sectors"]
@@ -161,32 +179,30 @@ def run(serve, binary, number, report):
     print(f"[1/6] bindings: every action on each of {count} slots, both layers", flush=True)
     catalog = [action["value"] for action in cli(binary, "actions") if action["value"] != "key:"]
     actions = catalog + KEYS + BUTTONS
-    # Slots whose snapshot binding the text catalog cannot spell come back byte for byte
-    # only if nothing overwrites them: sending their action back as text normalizes the
-    # trailing reserved and profile bytes to 0. The G502 Hero's factory slots, for
-    # example, store known special actions with the tail 0xffff and the G502 X
-    # Lightspeed's receiver profiles with 0xff00; the wired G502 X stores them with
-    # 0x0000 and no slot is skipped. Leaving these slots alone is exactly what the
-    # overlay does, so the test exercises the typable slots and keeps the rest verbatim.
+    # Slots stored with bytes their own text cannot spell are left as they are: writing
+    # another action there would overwrite them with the 0x0000 tail, and the one action
+    # whose text they do have writes nothing back. The G502 Hero's factory slots store
+    # known special actions with the tail 0xffff and the G502 X Lightspeed's receiver
+    # profiles with 0xff00; the wired G502 X stores them with 0x0000 and no slot is kept.
+    # Rotating the rest leaves these verbatim, exactly as the overlay does.
     # The two layers are tracked apart: a slot the G-Shift layer cannot spell is still
     # written on the default layer, and the other way round.
-    untypeable_buttons = {s for s in range(count) if snapshot_actions["buttons"][s] is None}
-    untypeable_gshift = {s for s in range(count) if snapshot_actions["gshift_buttons"][s] is None}
-    for label, skipped in (("default", untypeable_buttons), ("G-Shift", untypeable_gshift)):
-        if skipped:
-            report.note(
-                f"{label} slots {sorted(skipped)} are not typeable from text "
-                "and stay verbatim"
-            )
+    kept_buttons = verbatim_slots(snapshot["buttons"], snapshot_actions["buttons"], count)
+    kept_gshift = verbatim_slots(
+        snapshot["gshift_buttons"], snapshot_actions["gshift_buttons"], count
+    )
+    for layer, kept in (("default", kept_buttons), ("G-Shift", kept_gshift)):
+        if kept:
+            report.note(f"{layer} slots {sorted(kept)} stay as the mouse stores them")
     for step in range(len(actions)):
         tables = {
             "buttons": {
                 str(s): actions[(step + s) % len(actions)]
-                for s in range(count) if s not in untypeable_buttons
+                for s in range(count) if s not in kept_buttons
             },
             "gshift_buttons": {
                 str(s): actions[(step + s + count) % len(actions)]
-                for s in range(count) if s not in untypeable_gshift
+                for s in range(count) if s not in kept_gshift
             },
         }
         result = written(
@@ -256,6 +272,17 @@ def run(serve, binary, number, report):
         "refusals left the undo depth alone", unchanged["undo"] == last_undo,
         f"{unchanged['undo']} after {last_undo}",
     )
+    # A slot stored with a tail its text cannot spell keeps it when its own action is sent
+    # back, so this is where a G502 Hero or a G502 X Lightspeed checks the round trip.
+    for layer, snapshot_layer in (("buttons", "buttons"), ("gshift", "gshift_buttons")):
+        for s in sorted(verbatim_slots(snapshot[snapshot_layer],
+                                       snapshot_actions[snapshot_layer], count)):
+            text = snapshot_actions[snapshot_layer][s]
+            if text is None:
+                continue
+            again = serve.result("apply", profile=number, **{layer: {str(s): text}})
+            report.check(f"{layer}[{s}] = {text} writes nothing back", again["takes_effect"] is None,
+                         again)
     normalized = written(
         serve.request("apply", profile=number, buttons={"0": "key:shift+ctrl+t"}),
         "modifier order",

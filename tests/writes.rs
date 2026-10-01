@@ -12,7 +12,10 @@ use omalogi::{
     device::{CLI_SOFTWARE_ID, Session},
     editing::{BackupFile, EditError, ProfileChanges, TakesEffect, save_backup},
     hidraw::SUPPORTED_DEVICES,
-    onboard::format::{Binding, crc_ccitt, sector_crc_valid},
+    onboard::{
+        action::parse_action,
+        format::{Binding, crc_ccitt, sector_crc_valid},
+    },
 };
 use support::{FakeG502x, State, fixture_sectors};
 
@@ -31,7 +34,10 @@ struct Harness {
 
 impl Harness {
     async fn new(name: &str) -> Self {
-        let device = FakeG502x::new();
+        Self::new_with(name, FakeG502x::new()).await
+    }
+
+    async fn new_with(name: &str, device: FakeG502x) -> Self {
         let state = device.state();
         let onboard_index = device.feature_index(ONBOARD_PROFILES);
         let session = Session::connect(
@@ -254,6 +260,70 @@ async fn wheel_slots_are_editable_where_the_device_binds_them() {
         h.session.plan_profile_changes(1, &scroll).await,
         Err(EditError::SlotNotEditable { slot: 12, .. })
     ));
+}
+
+#[tokio::test]
+async fn a_profile_whose_actions_carry_bytes_writes_back_byte_for_byte() {
+    // A G502 Hero's factory profile names DPI shift with `90 07 ff ff`, a G502 X
+    // Lightspeed's names DPI up with `90 03 ff 00`, and both read back as text. Sending
+    // that text back must write nothing: `profiles edit --dry-run` on a profile read from
+    // either mouse changes nothing, and an edit to another slot leaves both alone.
+    let mut h = Harness::new_with("tails", FakeG502x::new().with_special_action_tails()).await;
+    let original = h.sector(4);
+
+    let onboard = h.session.onboard().await.expect("reads back");
+    let profile = &onboard.profiles[3];
+    assert_eq!(profile.actions.buttons[4].as_deref(), Some("dpi-shift"));
+    assert_eq!(profile.actions.buttons[5].as_deref(), Some("dpi-up"));
+
+    // Only the slots the mouse itself binds can be edited.
+    const BOUND_BUTTON_SLOTS: usize = 11;
+    let same_actions: Vec<(usize, Binding)> = profile
+        .actions
+        .buttons
+        .iter()
+        .enumerate()
+        .take(BOUND_BUTTON_SLOTS)
+        .filter_map(|(slot, text)| {
+            text.as_deref()
+                .and_then(|text| parse_action(text).ok())
+                .map(|binding| (slot, binding))
+        })
+        .collect();
+    let planned = h
+        .session
+        .plan_profile_changes(
+            4,
+            &ProfileChanges {
+                buttons: same_actions,
+                ..ProfileChanges::default()
+            },
+        )
+        .await;
+    assert!(matches!(planned, Err(EditError::NoChanges)), "{planned:?}");
+    assert_eq!(h.write_requests(), 0);
+    assert_eq!(h.sector(4), original);
+
+    // An edit elsewhere on the profile leaves the two named slots as the mouse stored them.
+    h.session
+        .apply_profile_changes(
+            4,
+            &ProfileChanges {
+                buttons: vec![(4, Binding::Disabled)],
+                ..ProfileChanges::default()
+            },
+            &h.backup_path("before"),
+        )
+        .await
+        .expect("write succeeds");
+    let written = h.sector(4);
+    assert!(sector_crc_valid(&written));
+    // Where a profile's bindings start; `format.rs` keeps the offset private.
+    let shift_dpi_up = 32 + 5 * 4;
+    assert_eq!(
+        &written[shift_dpi_up..shift_dpi_up + 4],
+        &[0x90, 0x03, 0xFF, 0x00]
+    );
 }
 
 #[tokio::test]

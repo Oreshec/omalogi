@@ -14,6 +14,17 @@ All notable changes are listed here. The project follows
   release needs both `OMALOGI_VERSION` and `OMALOGI_SHA256`. Raised in the plugin
   marketplace's review.
 
+### Fixed
+
+- A firmware-action binding now has a text form whatever bytes it is stored with, and
+  writing that text back writes nothing. #50 made the binding after a firmware action's
+  code opaque so it would survive a round trip, which also left every mouse that stores
+  those actions with a nonzero byte -- the G502 Hero's factory slots (`90 xx ff ff`) and
+  the G502 X Lightspeed's receiver profiles (`90 xx ff 00`) -- without a name, so a
+  profile read from them could not be written back and the overlay could not show what
+  those slots were bound to. The bytes are the mouse's and stay untouched: a slot is
+  written only when its action changes (@Oreshec, #38, #60).
+
 ## [0.3.5] - 2026-09-30
 
 ### Added

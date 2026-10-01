@@ -97,6 +97,34 @@ async fn reads_the_factory_profile_bindings() {
 }
 
 #[tokio::test]
+async fn reads_actions_stored_with_bytes_the_text_cannot_spell() {
+    let device = FakeG502x::new().with_special_action_tails();
+    let mut session = Session::connect(
+        device,
+        SUPPORTED_DEVICES[0],
+        "emulated".to_owned(),
+        CLI_SOFTWARE_ID,
+    )
+    .await
+    .expect("session starts");
+
+    let onboard = session.onboard().await.expect("onboard state");
+    let slot = &onboard.profiles[3];
+    assert_eq!(slot.actions.buttons[4].as_deref(), Some("dpi-shift"));
+    assert_eq!(slot.actions.buttons[5].as_deref(), Some("dpi-up"));
+    assert_eq!(slot.labels.buttons[4].as_deref(), Some("DPI shift (hold)"));
+    assert_eq!(
+        slot.profile.buttons[4],
+        Binding::Special {
+            code: 0x07,
+            action: Some(SpecialAction::ShiftDpi),
+            reserved: 0xFF,
+            profile: 0xFF
+        }
+    );
+}
+
+#[tokio::test]
 async fn backup_contains_every_listed_sector() {
     let (mut session, _, _) = connect().await;
     let backup = session.backup().await.expect("backup");

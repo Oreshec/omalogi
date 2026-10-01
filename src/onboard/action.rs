@@ -213,9 +213,14 @@ pub fn catalog() -> Vec<ActionInfo> {
 }
 
 /// The action text [`parse_action`] reads back into `binding`, or `None` for bindings
-/// that cannot be typed: macros, unknown encodings, right-hand modifiers, several
-/// mouse buttons at once, and firmware actions with nonzero reserved or profile bytes,
-/// which text would write back as 0.
+/// that cannot be typed: macros, unknown encodings, right-hand modifiers and several
+/// mouse buttons at once.
+///
+/// A firmware action is named whatever its reserved and profile bytes are, so a mouse
+/// storing `90 xx ff ff` (G502 Hero) or `90 xx ff 00` (G502 X Lightspeed) reports an
+/// action instead of nothing. Text cannot spell those bytes, so
+/// [`ProfileEditor`](super::edit::ProfileEditor) keeps the ones a slot already holds
+/// when the action written is the one it has.
 #[must_use]
 pub fn action_text(binding: &Binding) -> Option<String> {
     match *binding {
@@ -234,8 +239,6 @@ pub fn action_text(binding: &Binding) -> Option<String> {
         }
         Binding::Special {
             action: Some(action),
-            reserved: 0,
-            profile: 0,
             ..
         } => SPECIALS
             .iter()
@@ -484,13 +487,20 @@ mod tests {
         assert_eq!(text([0x80, 0x02, 0x10, 0x17]), None, "right ctrl");
         assert_eq!(text([0x80, 0x01, 0x00, 0x03]), None, "two mouse buttons");
         assert_eq!(text([0x90, 0x0C, 0x00, 0x00]), None, "battery indicator");
-        assert_eq!(
-            text([0x90, 0x07, 0xFF, 0x00]),
-            None,
-            "G502 X Lightspeed DPI shift"
-        );
-        assert_eq!(text([0x90, 0x03, 0xFF, 0xFF]), None, "G502 Hero DPI up");
         assert_eq!(text([0x80, 0x02, 0x00, 0x64]), None, "unnamed key");
+    }
+
+    #[test]
+    fn a_firmware_action_is_named_whatever_bytes_it_is_stored_with() {
+        let text = |raw| action_text(&Binding::decode(raw));
+        // The G502 Hero's factory slots, the G502 X Lightspeed's, and a wired G502 X's.
+        assert_eq!(text([0x90, 0x07, 0xFF, 0xFF]).as_deref(), Some("dpi-shift"));
+        assert_eq!(text([0x90, 0x03, 0xFF, 0xFF]).as_deref(), Some("dpi-up"));
+        assert_eq!(text([0x90, 0x0B, 0xFF, 0x00]).as_deref(), Some("gshift"));
+        assert_eq!(text([0x90, 0x0B, 0x00, 0x00]).as_deref(), Some("gshift"));
+        // A code with no action text stays unnamed however it is stored.
+        assert_eq!(text([0x90, 0x0D, 0xFF, 0x01]), None, "switch to profile");
+        assert_eq!(text([0x90, 0x42, 0xFF, 0xFF]), None, "unknown code");
     }
 
     #[test]

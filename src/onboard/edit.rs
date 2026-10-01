@@ -53,6 +53,25 @@ impl Binding {
             Self::Disabled => [0xFF; BINDING_LEN],
         }
     }
+
+    /// Whether `other` is this binding spelled the way the user would name it: the same
+    /// action, ignoring the bytes of a firmware action that no action text carries.
+    ///
+    /// It is what tells a slot's action apart from the bytes it stores it with, since a
+    /// G502 Hero holds `90 xx ff ff` and a G502 X Lightspeed `90 xx ff 00` where a wired
+    /// G502 X holds `90 xx 00 00`, and all three are the same action.
+    #[must_use]
+    pub fn same_action(&self, other: &Self) -> bool {
+        match (*self, *other) {
+            (
+                Self::Special { code, .. },
+                Self::Special {
+                    code: other_code, ..
+                },
+            ) => code == other_code,
+            _ => self == other,
+        }
+    }
 }
 
 /// The two binding tables of a profile.
@@ -117,6 +136,11 @@ impl ProfileEditor {
 
     /// Binds `slot` (below 16) in `table`.
     ///
+    /// A slot is written only when the action changes. The bytes a binding decodes from
+    /// and returns are kept as read, so a firmware action written with its own text, whose
+    /// `reserved` and profile bytes text cannot spell, leaves the ones the mouse stores
+    /// (`ffff` on a G502 Hero, `ff00` on a G502 X Lightspeed) alone.
+    ///
     /// # Panics
     ///
     /// When `slot` is 16 or higher; callers validate slots first.
@@ -127,14 +151,13 @@ impl ProfileEditor {
             Table::GShift => GSHIFT_BUTTON_OFFSET,
         };
         let at = base + slot * BINDING_LEN;
-        let current = Binding::decode(
-            self.data[at..at + BINDING_LEN]
-                .try_into()
-                .expect("slice has binding length"),
-        );
-        if current != binding {
-            self.data[at..at + BINDING_LEN].copy_from_slice(&binding.encode());
+        let raw: [u8; BINDING_LEN] = self.data[at..at + BINDING_LEN]
+            .try_into()
+            .expect("slice has binding length");
+        if Binding::decode(raw).same_action(&binding) {
+            return;
         }
+        self.data[at..at + BINDING_LEN].copy_from_slice(&binding.encode());
     }
 
     /// Sets the profile name, printable ASCII of at most [`MAX_NAME_LEN`] bytes that the
@@ -173,7 +196,10 @@ impl ProfileEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::onboard::format::{Profile, SpecialAction, sector_crc_valid};
+    use crate::onboard::{
+        action::parse_action,
+        format::{Profile, SpecialAction, crc_ccitt, sector_crc_valid},
+    };
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/g502x-c099.json");
 
@@ -200,6 +226,17 @@ mod tests {
             .filter(|(_, (x, y))| x != y)
             .map(|(i, _)| i)
             .collect()
+    }
+
+    /// A sector of profile 4, with `raw` in `slot` and a checksum that matches.
+    fn sector_with_binding(slot: usize, raw: [u8; BINDING_LEN]) -> Vec<u8> {
+        let mut sector = fixture_hex("/onboard/sectors/0004");
+        let at = BUTTON_OFFSET + slot * BINDING_LEN;
+        sector[at..at + BINDING_LEN].copy_from_slice(&raw);
+        let crc_at = sector.len() - 2;
+        let crc = crc_ccitt(&sector[..crc_at]);
+        sector[crc_at..].copy_from_slice(&crc.to_be_bytes());
+        sector
     }
 
     #[test]
@@ -230,6 +267,84 @@ mod tests {
         ] {
             assert_eq!(Binding::decode(raw).encode(), raw);
         }
+    }
+
+    #[test]
+    fn a_slot_stores_the_bytes_its_action_text_cannot_spell() {
+        // The G502 Hero's factory slots, the G502 X Lightspeed's receiver profiles, and
+        // the wired G502 X's: all three name DPI shift, and each is written back as read.
+        for raw in [
+            [0x90, 0x07, 0xFF, 0xFF],
+            [0x90, 0x07, 0xFF, 0x00],
+            [0x90, 0x07, 0x00, 0x00],
+        ] {
+            let sector = sector_with_binding(4, raw);
+            assert!(sector_crc_valid(&sector));
+            let mut editor = ProfileEditor::new(&sector, &description()).expect("editor");
+            editor.set_binding(
+                Table::Buttons,
+                4,
+                parse_action("dpi-shift").expect("parses"),
+            );
+            assert_eq!(editor.finish(), sector, "{raw:02X?}");
+        }
+    }
+
+    #[test]
+    fn a_slot_changes_action_without_losing_the_bytes_it_is_stored_with() {
+        let sector = sector_with_binding(4, [0x90, 0x07, 0xFF, 0xFF]);
+        let mut editor = ProfileEditor::new(&sector, &description()).expect("editor");
+        editor.set_binding(
+            Table::Buttons,
+            6,
+            Binding::Key {
+                modifiers: 0x01,
+                key: 0x17,
+            },
+        );
+        let edited = editor.finish();
+
+        let slot = BUTTON_OFFSET + 6 * BINDING_LEN;
+        let mut expected: Vec<usize> = (slot..slot + BINDING_LEN).collect();
+        expected.extend([253, 254]);
+        assert_eq!(changed_offsets(&sector, &edited), expected);
+        assert!(sector_crc_valid(&edited));
+        let profile = Profile::parse(&edited, &description()).expect("profile");
+        assert_eq!(
+            profile.buttons[4],
+            Binding::Special {
+                code: 0x07,
+                action: Some(SpecialAction::ShiftDpi),
+                reserved: 0xFF,
+                profile: 0xFF,
+            }
+        );
+    }
+
+    #[test]
+    fn a_different_action_replaces_the_bytes_a_slot_was_stored_with() {
+        // Text carries no bytes of its own, so binding another action writes that
+        // action's own encoding: the reserved and profile bytes go to 0.
+        let sector = sector_with_binding(4, [0x90, 0x07, 0xFF, 0xFF]);
+        let mut editor = ProfileEditor::new(&sector, &description()).expect("editor");
+        editor.set_binding(Table::Buttons, 4, parse_action("dpi-up").expect("parses"));
+        let edited = editor.finish();
+
+        let slot = BUTTON_OFFSET + 4 * BINDING_LEN;
+        let mut expected: Vec<usize> = (slot + 1..slot + BINDING_LEN).collect();
+        expected.extend([253, 254]);
+        assert_eq!(changed_offsets(&sector, &edited), expected);
+        assert!(sector_crc_valid(&edited));
+        let profile = Profile::parse(&edited, &description()).expect("profile");
+        assert_eq!(
+            profile.buttons[4],
+            Binding::Special {
+                code: 0x03,
+                action: Some(SpecialAction::NextDpi),
+                reserved: 0,
+                profile: 0,
+            }
+        );
     }
 
     #[test]

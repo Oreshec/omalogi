@@ -125,6 +125,16 @@ mod tests {
     }
 
     #[test]
+    fn names_a_firmware_action_however_it_is_stored() {
+        // A G502 Hero's factory profile and a G502 X Lightspeed's receiver profile name
+        // the action the same; the bytes that differ are the mouse's, not ours.
+        let label = |raw| binding(&Binding::decode(raw));
+        assert_eq!(label([0x90, 0x07, 0x00, 0x00]), "DPI shift (hold)");
+        assert_eq!(label([0x90, 0x07, 0xFF, 0x00]), "DPI shift (hold)");
+        assert_eq!(label([0x90, 0x07, 0xFF, 0xFF]), "DPI shift (hold)");
+    }
+
+    #[test]
     fn falls_back_to_codes_for_unnamed_values() {
         let label = |raw| binding(&Binding::decode(raw));
         assert_eq!(label([0x80, 0x02, 0x00, 0x64]), "key 0x64");
