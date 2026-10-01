@@ -12,6 +12,10 @@ use std::{
 };
 
 use hidpp::{async_trait, channel::RawHidChannel};
+use omalogi::onboard::{
+    edit::{Table, binding_range},
+    format::crc_ccitt,
+};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
 const FIXTURE: &str = include_str!("../fixtures/g502x-c099.json");
@@ -183,13 +187,11 @@ impl FakeG502x {
     /// The same mouse with profile 4 holding firmware actions with the nonzero tail bytes
     /// other mice store: the G502 Hero's `90 xx ff ff` and the G502 X Lightspeed's
     /// `90 xx ff 00`, where this dump's wired G502 X holds `90 xx 00 00`. The two slots
-    /// are rewritten and the sector's checksum fixed, so the profile reads back as one a
-    /// mouse of either kind would answer with.
+    /// are written as raw bytes, since the editor would leave an unchanged action alone,
+    /// and the sector's checksum fixed, so the profile reads back as one a mouse of either
+    /// kind would answer with.
     #[allow(dead_code)]
     pub fn with_special_action_tails(self) -> Self {
-        // Where the bindings start in a profile sector; `format.rs` keeps these private.
-        const BUTTON_OFFSET: usize = 32;
-        const BINDING_LEN: usize = 4;
         let mut sector = {
             let state = self.state.lock().expect("fake device state");
             state.sectors[&4].clone()
@@ -198,12 +200,13 @@ impl FakeG502x {
             (4usize, [0x90u8, 0x07, 0xFF, 0xFF]),
             (5, [0x90, 0x03, 0xFF, 0x00]),
         ] {
-            let at = BUTTON_OFFSET + slot * BINDING_LEN;
-            sector[at..at + BINDING_LEN].copy_from_slice(&raw);
+            let at = binding_range(Table::Buttons, slot);
+            sector[at].copy_from_slice(&raw);
         }
         let crc_at = sector.len() - 2;
-        let crc = omalogi::onboard::format::crc_ccitt(&sector[..crc_at]);
+        let crc = crc_ccitt(&sector[..crc_at]);
         sector[crc_at..].copy_from_slice(&crc.to_be_bytes());
+
         self.state
             .lock()
             .expect("fake device state")

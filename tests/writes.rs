@@ -14,7 +14,7 @@ use omalogi::{
     hidraw::SUPPORTED_DEVICES,
     onboard::{
         action::parse_action,
-        format::{Binding, crc_ccitt, sector_crc_valid},
+        format::{Binding, SpecialAction, crc_ccitt, sector_crc_valid},
     },
 };
 use support::{FakeG502x, State, fixture_sectors};
@@ -277,13 +277,13 @@ async fn a_profile_whose_actions_carry_bytes_writes_back_byte_for_byte() {
     assert_eq!(profile.actions.buttons[5].as_deref(), Some("dpi-up"));
 
     // Only the slots the mouse itself binds can be edited.
-    const BOUND_BUTTON_SLOTS: usize = 11;
+    let bound = usize::from(onboard.description.button_count);
     let same_actions: Vec<(usize, Binding)> = profile
         .actions
         .buttons
         .iter()
         .enumerate()
-        .take(BOUND_BUTTON_SLOTS)
+        .take(bound)
         .filter_map(|(slot, text)| {
             text.as_deref()
                 .and_then(|text| parse_action(text).ok())
@@ -316,13 +316,16 @@ async fn a_profile_whose_actions_carry_bytes_writes_back_byte_for_byte() {
         )
         .await
         .expect("write succeeds");
-    let written = h.sector(4);
-    assert!(sector_crc_valid(&written));
-    // Where a profile's bindings start; `format.rs` keeps the offset private.
-    let shift_dpi_up = 32 + 5 * 4;
+    assert!(sector_crc_valid(&h.sector(4)));
+    let kept = &h.session.onboard().await.expect("reads back").profiles[3];
     assert_eq!(
-        &written[shift_dpi_up..shift_dpi_up + 4],
-        &[0x90, 0x03, 0xFF, 0x00]
+        kept.profile.buttons[5],
+        Binding::Special {
+            code: 0x03,
+            action: Some(SpecialAction::NextDpi),
+            reserved: 0xFF,
+            profile: 0x00,
+        }
     );
 }
 

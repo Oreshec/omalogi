@@ -4,6 +4,8 @@
 //! the device, then recomputes the CRC. Bytes this crate does not decode survive
 //! unchanged, unlike rebuilding the sector from a struct.
 
+use std::ops::Range;
+
 use super::format::{
     BINDING_LEN, BUTTON_OFFSET, BUTTON_SLOTS, Binding, DIRECTORY_ENTRY_LEN, DPI_OFFSET,
     DPI_STAGE_COUNT, DecodeError, Description, GSHIFT_BUTTON_OFFSET, MIN_SECTOR_LEN, NAME_LEN,
@@ -81,6 +83,19 @@ pub enum Table {
     GShift,
 }
 
+/// Where a slot's four bytes are stored in a profile sector, wherever the layout puts
+/// them. Reads a slot with it: `&sector[binding_range(table, slot)]`, the way
+/// [`Binding::decode`] takes it. Slicing the sector is what reports a slot past its end.
+#[must_use]
+pub fn binding_range(table: Table, slot: usize) -> Range<usize> {
+    let base = match table {
+        Table::Buttons => BUTTON_OFFSET,
+        Table::GShift => GSHIFT_BUTTON_OFFSET,
+    };
+    let at = base + slot * BINDING_LEN;
+    at..at + BINDING_LEN
+}
+
 /// A profile sector being edited.
 #[derive(Debug, Clone)]
 pub struct ProfileEditor {
@@ -146,18 +161,14 @@ impl ProfileEditor {
     /// When `slot` is 16 or higher; callers validate slots first.
     pub fn set_binding(&mut self, table: Table, slot: usize, binding: Binding) {
         assert!(slot < BUTTON_SLOTS, "binding slot {slot} out of range");
-        let base = match table {
-            Table::Buttons => BUTTON_OFFSET,
-            Table::GShift => GSHIFT_BUTTON_OFFSET,
-        };
-        let at = base + slot * BINDING_LEN;
-        let raw: [u8; BINDING_LEN] = self.data[at..at + BINDING_LEN]
+        let at = binding_range(table, slot);
+        let raw: [u8; BINDING_LEN] = self.data[at.clone()]
             .try_into()
             .expect("slice has binding length");
         if Binding::decode(raw).same_action(&binding) {
             return;
         }
-        self.data[at..at + BINDING_LEN].copy_from_slice(&binding.encode());
+        self.data[at].copy_from_slice(&binding.encode());
     }
 
     /// Sets the profile name, printable ASCII of at most [`MAX_NAME_LEN`] bytes that the
@@ -226,6 +237,11 @@ mod tests {
             .filter(|(_, (x, y))| x != y)
             .map(|(i, _)| i)
             .collect()
+    }
+
+    /// Where a sector's two checksum bytes are.
+    fn checksum(sector_len: usize) -> Range<usize> {
+        sector_len - 2..sector_len
     }
 
     /// A sector of profile 4, with `raw` in `slot` and a checksum that matches.
@@ -306,7 +322,7 @@ mod tests {
 
         let slot = BUTTON_OFFSET + 6 * BINDING_LEN;
         let mut expected: Vec<usize> = (slot..slot + BINDING_LEN).collect();
-        expected.extend([253, 254]);
+        expected.extend(checksum(sector.len()));
         assert_eq!(changed_offsets(&sector, &edited), expected);
         assert!(sector_crc_valid(&edited));
         let profile = Profile::parse(&edited, &description()).expect("profile");
@@ -332,7 +348,7 @@ mod tests {
 
         let slot = BUTTON_OFFSET + 4 * BINDING_LEN;
         let mut expected: Vec<usize> = (slot + 1..slot + BINDING_LEN).collect();
-        expected.extend([253, 254]);
+        expected.extend(checksum(sector.len()));
         assert_eq!(changed_offsets(&sector, &edited), expected);
         assert!(sector_crc_valid(&edited));
         let profile = Profile::parse(&edited, &description()).expect("profile");
