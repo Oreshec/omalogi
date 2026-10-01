@@ -355,6 +355,52 @@ sectors byte-identical to it.
 
 Result: **pass**.
 
+## 2026-10-01: a firmware action keeps its bytes and gets a name, on the G502 Hero
+
+Device: Logitech G502 Hero SE, wired, USB 046d:c08b, profile layout (1, 2), 11 buttons,
+5 profiles of 256 bytes. Run by @Oreshec for #38, on the fix that follows #50: a slot's
+firmware action is now named whatever bytes it is stored with, and writing that action
+back writes nothing.
+
+Read first, on the running mouse, with the daemon stopped. Every user profile except
+profile 1 stores its firmware actions with the tail `ff ff`; profile 1, the one with the
+owner's own bindings, stores them with `00 00`:
+
+| Slot | Profile 1 | Profile 3 |
+|---|---|---|
+| 5 | `90 0b 00 00` G-Shift | `90 0b ff ff` G-Shift |
+| 8 | `90 0a 00 00` cycle profile | `90 0a ff ff` cycle profile |
+| 9, 10 | `90 02 00 00`, `90 01 00 00` tilt | `90 02 ff ff`, `90 01 ff ff` tilt |
+
+What the same profile read as text, `--json profiles`:
+
+| Slot | 0.3.5 | With the fix |
+|---|---|---|
+| 5, 8, 9, 10 of profile 3 | `null` | `gshift`, `profile-cycle`, `scroll-right`, `scroll-left` |
+| labels | already named (`G-Shift (hold)`, ...) | unchanged |
+
+`profiles edit 3 --button 5=gshift --button 8=profile-cycle --button 9=scroll-right
+--button 10=scroll-left --dry-run` on profile 3, whose slots already hold exactly those
+four actions: `the profile already has these settings; nothing was written`. On 0.3.5 the
+same command is refused, because none of those four actions has a text form.
+
+| Check | Result |
+|---|---|
+| `scripts/hardware-selftest.py --profile 3` on this branch | **1637 checks passed, 0 failed, 55 s** |
+| Slots kept as the mouse stores them | default layer 5, 8, 9, 10 (the `ff ff` ones), noted by the run; the G-Shift layer spells all 11 |
+| Every other slot | written with each action in turn, both layers, and read back |
+| Each `ff ff` slot sent its own action back | 4 checks, `takes_effect` null: nothing written |
+| Start and end backups of the profile's own run | identical in every sector |
+| A fresh backup after the run | identical to the run's end backup |
+| Independent cross-check | none: `probe_readonly.py` only speaks 046d:c099 |
+
+The profile's name was set to "Omalogi Test" before the run, so the pre-run snapshot and
+the final one differ in sector 0003 by the name and its checksum alone. A restore from the
+snapshot taken before the run put all 12 sectors back byte for byte, confirmed with a
+fresh backup; the daemon was restarted afterwards and the mouse was on profile 1 again.
+
+Result: **pass**.
+
 ## Observations
 
 - 2026-09-16: during the in-use phase of the self-test, one `omalogi dpi` read right after
