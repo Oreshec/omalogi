@@ -18,7 +18,9 @@ esac
 pinned() { sed -n "s/^$1=//p" install.sh; }
 version=$(pinned HELPER_VERSION)
 sha256=$(pinned HELPER_SHA256)
-[ -n "$version" ] && [ -n "$sha256" ] || die "install.sh pins no HELPER_VERSION or HELPER_SHA256"
+if [ -z "$version" ] || [ -z "$sha256" ]; then
+  die "install.sh pins no HELPER_VERSION or HELPER_SHA256"
+fi
 
 if $release; then
   cargo=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)

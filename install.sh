@@ -41,8 +41,9 @@ done
 version=$HELPER_VERSION
 sha256=$HELPER_SHA256
 if [ -n "${OMALOGI_VERSION:-}" ] || [ -n "${OMALOGI_SHA256:-}" ]; then
-  [ -n "${OMALOGI_VERSION:-}" ] && [ -n "${OMALOGI_SHA256:-}" ] \
-    || die "set OMALOGI_VERSION and OMALOGI_SHA256 together, or neither"
+  if [ -z "${OMALOGI_VERSION:-}" ] || [ -z "${OMALOGI_SHA256:-}" ]; then
+    die "set OMALOGI_VERSION and OMALOGI_SHA256 together, or neither"
+  fi
   version=${OMALOGI_VERSION#v}
   sha256=$OMALOGI_SHA256
 fi
