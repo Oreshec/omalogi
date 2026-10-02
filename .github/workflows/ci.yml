@@ -51,4 +51,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Shellcheck
-        run: shellcheck install.sh uninstall.sh
+        run: shellcheck install.sh uninstall.sh scripts/check-helper-pin.sh
+
+      # The helper install.sh pins must exist and match its recorded SHA-256. On main it
+      # must also be this release, so main never installs a helper from another one.
+      - name: Helper pin
+        run: scripts/check-helper-pin.sh ${{ github.ref == 'refs/heads/main' && '--release' || '' }}
