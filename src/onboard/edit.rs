@@ -61,16 +61,33 @@ impl Binding {
     ///
     /// It is what tells a slot's action apart from the bytes it stores it with, since a
     /// G502 Hero holds `90 xx ff ff` and a G502 X Lightspeed `90 xx ff 00` where a wired
-    /// G502 X holds `90 xx 00 00`, and all three are the same action.
+    /// G502 X holds `90 xx 00 00`, and all three are the same action. Those bytes are
+    /// padding only for actions that are known not to use them: `EnableProfile` keeps the
+    /// profile it switches to in the last byte, and an unknown code may use either.
     #[must_use]
     pub fn same_action(&self, other: &Self) -> bool {
         match (*self, *other) {
             (
-                Self::Special { code, .. },
                 Self::Special {
-                    code: other_code, ..
+                    code,
+                    action,
+                    reserved,
+                    profile,
                 },
-            ) => code == other_code,
+                Self::Special {
+                    code: other_code,
+                    reserved: other_reserved,
+                    profile: other_profile,
+                    ..
+                },
+            ) => {
+                code == other_code
+                    && match action {
+                        None => reserved == other_reserved && profile == other_profile,
+                        Some(action) if action.targets_profile() => profile == other_profile,
+                        Some(_) => true,
+                    }
+            }
             _ => self == other,
         }
     }
@@ -283,6 +300,24 @@ mod tests {
         ] {
             assert_eq!(Binding::decode(raw).encode(), raw);
         }
+    }
+
+    #[test]
+    fn padding_is_ignored_only_where_an_action_does_not_use_it() {
+        let same = |a: [u8; BINDING_LEN], b: [u8; BINDING_LEN]| {
+            Binding::decode(a).same_action(&Binding::decode(b))
+        };
+        // DPI shift: the reserved and profile bytes are padding.
+        assert!(same([0x90, 0x07, 0xFF, 0xFF], [0x90, 0x07, 0x00, 0x00]));
+        assert!(same([0x90, 0x07, 0xFF, 0x00], [0x90, 0x07, 0x00, 0x00]));
+        assert!(!same([0x90, 0x07, 0x00, 0x00], [0x90, 0x03, 0x00, 0x00]));
+        // EnableProfile: the last byte is the profile it switches to.
+        assert!(same([0x90, 0x0D, 0xFF, 0x02], [0x90, 0x0D, 0x00, 0x02]));
+        assert!(!same([0x90, 0x0D, 0x00, 0x01], [0x90, 0x0D, 0x00, 0x02]));
+        // An unknown code: no byte is known to be padding.
+        assert!(same([0x90, 0x42, 0x01, 0x02], [0x90, 0x42, 0x01, 0x02]));
+        assert!(!same([0x90, 0x42, 0x01, 0x02], [0x90, 0x42, 0x00, 0x02]));
+        assert!(!same([0x90, 0x42, 0x01, 0x02], [0x90, 0x42, 0x01, 0x03]));
     }
 
     #[test]

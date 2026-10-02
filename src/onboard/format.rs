@@ -229,6 +229,13 @@ impl SpecialAction {
             _ => return None,
         })
     }
+
+    /// Whether the binding's profile byte names the profile this action switches to,
+    /// rather than being padding: only `EnableProfile` (libratbag, `hidpp20.c`).
+    #[must_use]
+    pub fn targets_profile(self) -> bool {
+        self == Self::EnableProfile
+    }
 }
 
 /// What one button slot in a profile does.
