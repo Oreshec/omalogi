@@ -5,14 +5,22 @@
 # this script from its plugin folder when the helper is missing or too old. To run it
 # yourself: bash ~/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh
 #
-# Downloads the release binary from this repository's GitHub releases, checks its
-# SHA-256, installs it to ~/.local/bin, installs the udev rule that lets your user reach
+# Downloads one exact helper release, checks its archive against the SHA-256 recorded
+# below, installs the binary to ~/.local/bin and the udev rule that lets your user reach
 # the mouse (sudo, once), and runs `omalogi setup` for the bar indicator and daemon.
 #
-# OMALOGI_VERSION=v0.1.0 pins a release; OMALOGI_BIN_DIR changes where the binary goes.
+# OMALOGI_VERSION with OMALOGI_SHA256 installs another release instead; both are needed,
+# since a checksum published next to a download only catches a broken transfer.
+# OMALOGI_BIN_DIR changes where the binary goes.
 set -euo pipefail
 
-VERSION=${OMALOGI_VERSION:-latest}
+# The helper this plugin installs: its release and the SHA-256 of its x86_64 archive.
+# Both are part of the reviewed source, so the helper installed is the one reviewed with
+# this plugin, never whatever release is newest. The release's own .sha256 file is not
+# used. Updated by the release steps in CONTRIBUTING.md.
+HELPER_VERSION=0.3.5
+HELPER_SHA256=68bdf19d71518712335de0b5c5900ee2a2b76b314a2520df5492e6b3252529c4
+
 BIN_DIR=${OMALOGI_BIN_DIR:-$HOME/.local/bin}
 RULE=/etc/udev/rules.d/70-omalogi.rules
 PACKAGED_RULE=/usr/lib/udev/rules.d/70-omalogi.rules
@@ -30,16 +38,25 @@ for tool in curl tar sha256sum install; do
   command -v "$tool" >/dev/null 2>&1 || die "needs $tool"
 done
 
-if [ "$VERSION" = latest ]; then
-  base="https://github.com/elberacasa/omalogi/releases/latest/download"
-else
-  base="https://github.com/elberacasa/omalogi/releases/download/$VERSION"
+version=$HELPER_VERSION
+sha256=$HELPER_SHA256
+if [ -n "${OMALOGI_VERSION:-}" ] || [ -n "${OMALOGI_SHA256:-}" ]; then
+  [ -n "${OMALOGI_VERSION:-}" ] && [ -n "${OMALOGI_SHA256:-}" ] \
+    || die "set OMALOGI_VERSION and OMALOGI_SHA256 together, or neither"
+  version=${OMALOGI_VERSION#v}
+  sha256=$OMALOGI_SHA256
 fi
+case "$sha256" in
+  *[!0-9a-f]* | "") die "the SHA-256 must be 64 lowercase hex digits" ;;
+esac
+[ ${#sha256} -eq 64 ] || die "the SHA-256 must be 64 lowercase hex digits"
+
 name="omalogi-$target"
+url="https://github.com/elberacasa/omalogi/releases/download/v$version/$name.tar.gz"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-say "Downloading $name.tar.gz"
+say "Downloading Omalogi $version ($name.tar.gz)"
 # A stalled download host otherwise hangs the installer for good: give up on a connection
 # after 15 s and a transfer after 5 minutes, and retry either (the binary is ~3 MB).
 fetch() {
@@ -47,14 +64,16 @@ fetch() {
     --retry 3 --retry-delay 2 --retry-all-errors -o "$1" "$2" \
     || die "could not download $2; check your connection and try again"
 }
-fetch "$tmp/$name.tar.gz" "$base/$name.tar.gz"
-fetch "$tmp/$name.tar.gz.sha256" "$base/$name.tar.gz.sha256"
-(cd "$tmp" && sha256sum --check --status "$name.tar.gz.sha256") \
-  || die "the download does not match its checksum; nothing was installed"
+fetch "$tmp/$name.tar.gz" "$url"
+printf '%s  %s\n' "$sha256" "$tmp/$name.tar.gz" | sha256sum --check --status \
+  || die "the download does not match the recorded SHA-256 for $version; nothing was installed"
 tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
+reported=$("$tmp/$name/omalogi" --version)
+[ "$reported" = "omalogi $version" ] \
+  || die "the archive for $version holds $reported; nothing was installed"
 
 install -Dm755 "$tmp/$name/omalogi" "$BIN_DIR/omalogi"
-say "Installed $("$BIN_DIR/omalogi" --version) to $BIN_DIR"
+say "Installed $reported to $BIN_DIR"
 
 # A rule in /etc/udev/rules.d takes precedence over one of the same name in /usr/lib, so
 # a current copy in /etc is enough; one in /usr/lib (from a package) is only trusted
