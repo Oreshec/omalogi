@@ -99,8 +99,20 @@ so everything about a model stays in one place.
 
 One version lives in four places, and a test fails when the last two disagree:
 `Cargo.toml`, `manifest.json`, `VERSION` in `plugin/Model.js`, and the `CHANGELOG.md`
-heading. Merge `next` into `main` once they match, then tag `vX.Y.Z` on `main`; the tag
-builds the release.
+heading. `install.sh` pins the helper the plugin installs (`HELPER_VERSION` and the
+SHA-256 of its archive), so the helper users get is the one reviewed with the plugin,
+never whatever release is newest. That pin can only name a release once it is built, so
+a release happens on `next` and reaches `main` in one step:
+
+1. On `next`, bump the version in all four places and merge.
+2. Tag `vX.Y.Z` on `next` and push the tag; the release workflow builds the archive.
+3. Pin it: set `HELPER_VERSION` and `HELPER_SHA256` in `install.sh` to that release
+   (hash the downloaded archive and check it against the published `.sha256`), update
+   the AUR package, and merge into `next`.
+4. Run `scripts/check-helper-pin.sh --release`.
+5. Fast-forward `main` to `next` with `git push origin next:main`. The tag is then in
+   `main`'s history, and `main` never holds a plugin that installs another helper.
+6. Point the marketplace verification request at `main`'s new HEAD.
 
 ## Branches
 

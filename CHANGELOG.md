@@ -5,6 +5,15 @@ All notable changes are listed here. The project follows
 
 ## Unreleased
 
+### Security
+
+- The helper installer no longer installs whatever release is newest. `install.sh` pins
+  one helper release and the SHA-256 of its archive in the plugin's own source, so the
+  helper a user gets is the one reviewed with that plugin; the release's own `.sha256`
+  file, which could change with the archive, is no longer used. Installing another
+  release needs both `OMALOGI_VERSION` and `OMALOGI_SHA256`. Raised in the plugin
+  marketplace's review.
+
 ## [0.3.5] - 2026-09-30
 
 ### Added

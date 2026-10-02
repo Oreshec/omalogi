@@ -107,8 +107,9 @@ omarchy plugin add https://github.com/elberacasa/omalogi --enable
 Then open Omalogi from the bar. The first time, it offers to install its helper: the
 `omalogi` command that talks to the mouse, and a udev rule that lets your user reach it
 (a plugin runs inside the shell and cannot open USB devices itself). That opens a
-terminal running the installer, which checks the download's SHA-256 and asks for sudo
-once. `omarchy plugin update` keeps the plugin current, and Omalogi tells you when its
+terminal running the installer, which installs the exact helper release this plugin
+version was published with, checked against a SHA-256 kept in the plugin's own source,
+and asks for sudo once. `omarchy plugin update` keeps the plugin current, and Omalogi tells you when its
 helper needs updating too.
 
 To run the helper installer yourself, from the plugin folder:
@@ -117,9 +118,9 @@ To run the helper installer yourself, from the plugin folder:
 bash ~/.config/omarchy/plugins/io.github.elberacasa.omalogi/install.sh
 ```
 
-It downloads the release binary from this repository, checks its SHA-256, installs
-`omalogi` to `~/.local/bin` and the udev rule below, and runs `omalogi setup`; run it
-again to update. On Arch you can instead install the
+It downloads the helper release pinned in `install.sh` (`HELPER_VERSION`), refuses it
+unless it matches the SHA-256 pinned beside it, installs `omalogi` to `~/.local/bin` and
+the udev rule below, and runs `omalogi setup`; run it again after updating the plugin. On Arch you can instead install the
 [`omalogi`](packaging/aur/omalogi) AUR package and run `omalogi setup`.
 
 ## Dependencies
